@@ -1,0 +1,6 @@
+﻿Name;Resistance;Package;Qty;Location
+Resistor 4k7; 4k7 ;0805;100;A1
+
+Resistor bad;10k;9999;5;A1
+Resistor 10k;10k;0603;50;A1
+;;;;
