@@ -106,3 +106,64 @@ async def test_manufacturer_barcodes_attach_to_items_and_units(client, db):
         json={"code": "EAN-3", "target_type": "item", "target_id": 99999, "kind": "custom"},
     )
     assert missing.status_code == 404
+
+
+async def test_stale_key_can_be_cleared_with_null(client, db):
+    category = await make_category(db, "Resistors", fields=[RESISTANCE])
+    iid = (
+        await client.post(
+            "/api/v1/items",
+            json={"category_id": category.id, "name": "x", "attrs": {"resistance": 4700}},
+        )
+    ).json()["id"]
+    fields = (await client.get(f"/api/v1/categories/{category.id}/fields")).json()
+    await client.delete(f"/api/v1/fields/{fields[0]['id']}")
+    r = await client.patch(f"/api/v1/items/{iid}", json={"attrs": {"resistance": 1}})
+    assert r.status_code == 422  # unknown keys with a value are still rejected
+    r = await client.patch(f"/api/v1/items/{iid}", json={"attrs": {"resistance": None}})
+    assert r.status_code == 200
+    assert r.json()["attrs"] == {}
+
+
+async def test_stale_unit_key_can_be_cleared_with_null(client, db):
+    cells = await make_category(
+        db,
+        "Cells",
+        tracking_mode="unit",
+        fields=[{"key": "capacity", "type": "number", "scope": "unit"}],
+    )
+    item = await make_item(db, cells, "18650")
+    unit = await make_unit(db, item, attrs={"capacity": 2500})
+    fields = (await client.get(f"/api/v1/categories/{cells.id}/fields")).json()
+    await client.delete(f"/api/v1/fields/{fields[0]['id']}")
+    r = await client.patch(f"/api/v1/units/{unit.id}", json={"attrs": {"capacity": None}})
+    assert r.status_code == 200
+    assert r.json()["attrs"] == {}
+
+
+async def test_field_type_change_after_items_exist(client, db):
+    category = await make_category(db, "Resistors", fields=[RESISTANCE])
+    item = await make_item(db, category, "x", attrs={"resistance": 4700})
+    fields = (await client.get(f"/api/v1/categories/{category.id}/fields")).json()
+    r = await client.patch(f"/api/v1/fields/{fields[0]['id']}", json={"type": "text"})
+    assert r.status_code == 200
+    assert (await client.get(f"/api/v1/items/{item.id}")).status_code == 200
+    r = await client.patch(f"/api/v1/items/{item.id}", json={"name": "renamed"})
+    assert r.status_code == 200
+    assert r.json()["attrs"] == {"resistance": 4700}
+
+
+async def test_field_made_required_after_items_exist(client, db):
+    category = await make_category(
+        db, "Misc", fields=[{"key": "colour", "type": "text"}, {"key": "size", "type": "text"}]
+    )
+    item = await make_item(db, category, "x")
+    fields = (await client.get(f"/api/v1/categories/{category.id}/fields")).json()
+    colour = next(f for f in fields if f["key"] == "colour")
+    r = await client.patch(f"/api/v1/fields/{colour['id']}", json={"required": True})
+    assert r.status_code == 200
+    r = await client.patch(f"/api/v1/items/{item.id}", json={"name": "renamed"})
+    assert r.status_code == 200
+    r = await client.patch(f"/api/v1/items/{item.id}", json={"attrs": {"size": "L"}})
+    assert r.status_code == 422
+    assert r.json()["fields"] == {"colour": "required"}

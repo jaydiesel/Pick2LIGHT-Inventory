@@ -176,10 +176,10 @@ def validate_values(
     errors: dict[str, str] = {}
     for key, value in raw.items():
         spec = by_key.get(key)
-        if spec is None:
+        if value is None:
+            merged.pop(key, None)  # also clears stale keys whose definition is gone
+        elif spec is None:
             errors[key] = "unknown field"
-        elif value is None:
-            merged.pop(key, None)
         else:
             try:
                 cleaned = _clean(spec, value)
