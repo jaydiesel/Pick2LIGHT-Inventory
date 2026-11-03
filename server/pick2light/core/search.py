@@ -39,7 +39,13 @@ from sqlalchemy.sql import ColumnElement
 
 from pick2light.core import si
 from pick2light.core.barcodes import lookup_barcode
-from pick2light.core.categories import descendant_ids, effective_fields, get_category
+from pick2light.core.categories import (
+    descendant_ids,
+    effective_field_defs,
+    effective_fields,
+    effective_log_types,
+    get_category,
+)
 from pick2light.core.fields import FieldSpec, display_values
 from pick2light.core.locations import LocationRef, get_location, subtree_ids
 from pick2light.errors import ValidationFailed
@@ -209,33 +215,69 @@ def _field_predicate(json_col: Any, spec: FieldSpec, op: str, value: Any) -> Any
 UnitClause = Callable[[Any], ColumnElement[bool]]
 
 
-async def _resolve_field(db: AsyncSession, key: str) -> tuple[str, FieldSpec]:
-    defs = list(await db.scalars(select(FieldDefinition).where(FieldDefinition.key == key)))
-    if not defs:
-        raise _bad(f"unknown field {key!r}")
-    scopes = {d.scope for d in defs}
-    if len(scopes) > 1:
-        raise _bad(f"field {key!r} is used at both item and unit level; it cannot be filtered")
-    return defs[0].scope, FieldSpec.from_definition(defs[0])
+def _agreed(name: str, found: list[tuple[str, FieldSpec]], unknown: str) -> tuple[str, FieldSpec]:
+    """The single (scope, spec) all candidates agree on, else a 422 naming the key."""
+    if not found:
+        raise _bad(unknown)
+    first_scope, first = found[0]
+    for scope, spec in found[1:]:
+        if (scope, spec.type, spec.number_unit) != (first_scope, first.type, first.number_unit):
+            raise _bad(
+                f"{name!r} is defined differently in different categories; "
+                "choose a category to filter it"
+            )
+    return first_scope, first
 
 
-async def _resolve_latest(db: AsyncSession, flt: LatestFilter) -> tuple[str, FieldSpec]:
-    types = list(
-        await db.scalars(
-            select(LogEntryType).where(
-                LogEntryType.key == flt.log_type, LogEntryType.deleted_at.is_(None)
+async def _resolve_field(
+    db: AsyncSession, key: str, category_id: int | None
+) -> tuple[str, FieldSpec]:
+    """Item/unit scope and spec of a field: from the category's effective fields when one
+    is given, else from live categories, which must agree."""
+    if category_id is not None:
+        defs = [d for d in await effective_field_defs(db, category_id) if d.key == key]
+    else:
+        defs = list(
+            await db.scalars(
+                select(FieldDefinition)
+                .join(Category, Category.id == FieldDefinition.category_id)
+                .where(FieldDefinition.key == key, Category.deleted_at.is_(None))
+                .order_by(FieldDefinition.id)
             )
         )
-    )
+    found = [(d.scope, FieldSpec.from_definition(d)) for d in defs]
+    return _agreed(key, found, f"unknown field {key!r}")
+
+
+async def _resolve_latest(
+    db: AsyncSession, flt: LatestFilter, category_id: int | None
+) -> tuple[str, FieldSpec]:
+    if category_id is not None:
+        types = [t for t in await effective_log_types(db, category_id) if t.key == flt.log_type]
+    else:
+        types = list(
+            await db.scalars(
+                select(LogEntryType)
+                .join(Category, Category.id == LogEntryType.category_id)
+                .where(
+                    LogEntryType.key == flt.log_type,
+                    LogEntryType.deleted_at.is_(None),
+                    Category.deleted_at.is_(None),
+                )
+                .order_by(LogEntryType.id)
+            )
+        )
     if not types:
         raise _bad(f"unknown log type {flt.log_type!r}")
-    if len({t.applies_to for t in types}) > 1:
-        raise _bad(f"log type {flt.log_type!r} applies to both items and units")
-    for log_type in types:
-        for field in log_type.fields:
-            if field.get("key") == flt.key:
-                return log_type.applies_to, FieldSpec.from_dict(field)
-    raise _bad(f"log type {flt.log_type!r} has no field {flt.key!r}")
+    found = [
+        (t.applies_to, FieldSpec.from_dict(f))
+        for t in types
+        for f in t.fields
+        if f.get("key") == flt.key
+    ]
+    return _agreed(
+        f"{flt.log_type}.{flt.key}", found, f"log type {flt.log_type!r} has no field {flt.key!r}"
+    )
 
 
 def _unit_condition_clause(conditions: list[str]) -> UnitClause:
@@ -336,14 +378,14 @@ async def search(db: AsyncSession, query: SearchQuery) -> SearchPage:
         unit_clauses.append(_unit_condition_clause(conditions))
 
     for flt in query.filters:
-        scope, spec = await _resolve_field(db, flt.key)
+        scope, spec = await _resolve_field(db, flt.key, query.category_id)
         if scope == "unit":
             unit_clauses.append(_unit_field_clause(spec, flt))
         else:
             conds.append(field_predicate(Item.attrs, spec, flt.op, flt.value))
 
     for lat in query.latest:
-        applies_to, spec = await _resolve_latest(db, lat)
+        applies_to, spec = await _resolve_latest(db, lat, query.category_id)
         if applies_to == "unit":
             unit_clauses.append(_unit_latest_clause(spec, lat))
         else:

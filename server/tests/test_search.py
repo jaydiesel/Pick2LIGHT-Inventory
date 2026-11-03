@@ -358,3 +358,63 @@ async def test_punctuation_queries_do_not_crash(db, q):
     await make_item(db, cat, "Widget 10k/1%")
     page = await search(db, SearchQuery(q=q))
     assert page.total == len(page.hits) <= 1
+
+
+async def test_field_key_resolved_per_category(db):
+    ohm = await make_category(
+        db, "Ohm parts", fields=[{"key": "val", "type": "number", "number_unit": "Ω"}]
+    )
+    volt = await make_category(
+        db, "Volt parts", fields=[{"key": "val", "type": "number", "number_unit": "V"}]
+    )
+    a = await make_item(db, ohm, "A", attrs={"val": "1k"})
+    b = await make_item(db, volt, "B", attrs={"val": "1k"})
+    f = {"key": "val", "op": "eq", "value": "1kΩ"}
+    assert await ids(db, filters=[f], category_id=ohm.id) == [a.id]
+    # "1kΩ" is not valid for a volt field: parsed with that category's unit
+    with pytest.raises(ValidationFailed):
+        await search(db, SearchQuery(filters=[f], category_id=volt.id))
+    assert await ids(db, filters=[{**f, "value": "1kV"}], category_id=volt.id) == [b.id]
+    with pytest.raises(ValidationFailed) as exc:
+        await search(db, SearchQuery(filters=[{**f, "value": "1k"}]))
+    assert "val" in str(exc.value.fields)
+
+
+async def test_inherited_field_resolves_from_child_category(db):
+    parent = await make_category(db, "P", fields=[RESISTANCE])
+    child = await make_category(db, "C", parent=parent)
+    other = await make_category(
+        db, "O", fields=[{"key": "resistance", "type": "number", "number_unit": "V"}]
+    )
+    item = await make_item(db, child, "X", attrs={"resistance": "1k"})
+    await make_item(db, other, "Y", attrs={"resistance": "1k"})
+    f = {"key": "resistance", "op": "eq", "value": "1k"}
+    assert await ids(db, filters=[f], category_id=child.id) == [item.id]
+
+
+async def test_deleted_category_definitions_ignored(db):
+    from pick2light.core.categories import delete_category
+
+    live = await make_category(db, "Live", fields=[RESISTANCE])
+    dead = await make_category(
+        db, "Dead", fields=[{"key": "resistance", "type": "number", "number_unit": "V"}]
+    )
+    await delete_category(db, dead.id)
+    item = await make_item(db, live, "X", attrs={"resistance": "1k"})
+    assert await ids(db, filters=[{"key": "resistance", "op": "eq", "value": "1kΩ"}]) == [item.id]
+
+
+async def test_latest_log_type_resolved_per_category(db):
+    a = await make_category(db, "A", tracking_mode="unit")
+    b = await make_category(db, "B", tracking_mode="unit")
+    spec_a = IR_TEST
+    spec_b = {
+        **IR_TEST,
+        "fields": [{"key": "ir_mohm", "label": "IR", "type": "number", "number_unit": "V"}],
+    }
+    await create_log_type(db, a.id, LogEntryTypeIn.model_validate(spec_a))
+    await create_log_type(db, b.id, LogEntryTypeIn.model_validate(spec_b))
+    f = {"log_type": "capacity_test", "key": "ir_mohm", "op": "lt", "value": "30"}
+    await search(db, SearchQuery(latest=[f], category_id=a.id))
+    with pytest.raises(ValidationFailed):
+        await search(db, SearchQuery(latest=[f]))
