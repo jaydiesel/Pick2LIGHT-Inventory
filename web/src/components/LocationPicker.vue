@@ -4,37 +4,34 @@ import { computed, ref, watch } from 'vue'
 import { apiFetch } from '@/api/client'
 import type { LocationNode, StockRow } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
+import LocationTree from '@/components/LocationTree.vue'
 
-const props = defineProps<{ open: boolean; title?: string; locations?: StockRow[] }>()
-const emit = defineEmits<{ select: [id: number]; close: [] }>()
+const props = defineProps<{ open: boolean; title?: string; locations?: StockRow[]; allowRoot?: boolean }>()
+const emit = defineEmits<{ select: [id: number]; root: []; close: [] }>()
 
-interface Flat {
-  id: number
-  label: string
-  depth: number
-}
-const tree = ref<Flat[]>([])
+const tree = ref<LocationNode[]>([])
 const filter = ref('')
-
-function flatten(nodes: LocationNode[], depth = 0, out: Flat[] = []): Flat[] {
-  for (const n of nodes) {
-    out.push({ id: n.id, label: `${n.name} (${n.code})`, depth })
-    flatten(n.children ?? [], depth + 1, out)
-  }
-  return out
-}
 
 watch(
   () => props.open,
   async (open) => {
-    if (open && !props.locations?.length) tree.value = flatten(await apiFetch<LocationNode[]>('/locations/tree'))
+    if (open && !props.locations?.length) tree.value = await apiFetch<LocationNode[]>('/locations/tree')
   },
   { immediate: true },
 )
 
+function prune(nodes: LocationNode[], f: string): LocationNode[] {
+  const out: LocationNode[] = []
+  for (const n of nodes) {
+    const kids = prune(n.children ?? [], f)
+    if (kids.length || `${n.name} ${n.code}`.toLowerCase().includes(f)) out.push({ ...n, children: kids })
+  }
+  return out
+}
+
 const shown = computed(() => {
   const f = filter.value.trim().toLowerCase()
-  return f ? tree.value.filter((t) => t.label.toLowerCase().includes(f)) : tree.value
+  return f ? prune(tree.value, f) : tree.value
 })
 </script>
 
@@ -53,17 +50,9 @@ const shown = computed(() => {
     </div>
     <div v-else class="stack">
       <input v-model="filter" class="p2l-input" placeholder="Filter locations" data-test="location-filter" />
+      <button v-if="allowRoot" class="p2l-btn choice" data-test="choose-root" @click="emit('root')">Top level (no parent)</button>
       <p v-if="!shown.length" class="muted">No locations yet — add them under Locations.</p>
-      <button
-        v-for="loc in shown"
-        :key="loc.id"
-        class="p2l-btn choice"
-        :style="{ paddingLeft: `${0.9 + loc.depth * 1.1}rem` }"
-        :data-test="`choose-${loc.id}`"
-        @click="emit('select', loc.id)"
-      >
-        {{ loc.label }}
-      </button>
+      <LocationTree :nodes="shown" @select="(id) => emit('select', id)" />
     </div>
   </AppModal>
 </template>
