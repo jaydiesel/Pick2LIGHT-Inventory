@@ -127,3 +127,42 @@ def test_restore_requires_yes(tmp_path):
 
     result = CliRunner().invoke(cli.app, ["restore", str(tmp_path / "x.tar.gz")])
     assert result.exit_code != 0
+
+
+async def test_restore_via_api_does_not_deadlock(committed_db, database_url, tmp_path):
+    """Restore through the real request path (get_db + require_auth), not just the service."""
+    import asyncio
+
+    import httpx
+    from sqlalchemy import text
+
+    from pick2light.app import create_app
+    from pick2light.core.settings import set_settings
+
+    async with committed_db() as s:
+        await set_settings(s, {"auth.mode": "none", "setup.completed": True})
+        item = await make_item(s, await make_category(s, "Cells"), "30Q")
+        await s.commit()
+        item_id = item.id
+    settings = Settings(database_url=database_url, data_dir=tmp_path / "data", secret_key="x")
+    app = create_app(settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test", timeout=60
+    ) as c:
+        name = (await c.post("/api/v1/backups")).json()["name"]
+        async with committed_db() as s:
+            await s.execute(delete(Barcode))
+            await s.execute(delete(Item))
+            await s.execute(text("CREATE TABLE zz_newer_version (id int)"))
+            await s.commit()
+        r = await asyncio.wait_for(c.post(f"/api/v1/backups/{name}/restore"), timeout=45)
+        assert r.status_code == 204
+        assert (await c.get(f"/api/v1/items/{item_id}")).status_code == 200
+        assert (await c.get("/api/v1/health")).json()["maintenance"] is False
+    await app.state.engine.dispose()
+    async with committed_db() as s:
+        fks = await s.scalar(text("SELECT count(*) FROM pg_constraint WHERE contype = 'f'"))
+        leftover = await s.scalar(text("SELECT to_regclass('public.zz_newer_version')"))
+    assert fks > 10 and leftover is None
+    safety = [b for b in list_backups(settings.backup_dir) if b.name != name]
+    assert safety, "a safety backup is written before restoring"

@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from pick2light.api.deps import DB
 from pick2light.backup import service as svc
 from pick2light.backup.service import BackupInfo
 from pick2light.errors import NotFound, ValidationFailed
@@ -59,6 +60,12 @@ async def upload(request: Request, file: Annotated[UploadFile, File()]) -> Backu
 
 
 @router.post("/backups/{name}/restore", status_code=204)
-async def restore(name: str, request: Request) -> Response:
-    await svc.restore_backup(request.app.state.settings, _file(request, name), request.app.state)
+async def restore(name: str, request: Request, db: DB) -> Response:
+    path = _file(request, name)
+    # End this request's transaction (the auth check read `settings`) and empty the pool so no
+    # connection of ours holds a lock while the schema is replaced.
+    await db.rollback()
+    await db.close()
+    await request.app.state.engine.dispose()
+    await svc.restore_backup(request.app.state.settings, path, request.app.state)
     return Response(status_code=204)

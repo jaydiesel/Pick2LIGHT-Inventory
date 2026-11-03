@@ -155,49 +155,77 @@ def _known_revisions() -> list[str]:
     return [rev.revision for rev in script.walk_revisions()]
 
 
-async def restore_backup(settings: Settings, path: Path, app_state: Any) -> None:
+async def _replace_database(url: str, dump: Path) -> None:
+    """Empty the schema, then load the dump in one transaction (all or nothing)."""
+    conn = await asyncpg.connect(libpq_url(url))
+    try:
+        await conn.execute("SET lock_timeout = '15s'")  # fail instead of waiting on a lingering connection
+        await conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+    finally:
+        await conn.close()
+    await _run(
+        "pg_restore", "--single-transaction", "--exit-on-error", "--no-owner", "-d", libpq_url(url), str(dump)
+    )
+
+
+def _extract(archive: Path, dest: Path) -> dict[str, Any]:
+    with tarfile.open(archive, "r:gz") as tar:
+        tar.extractall(dest, filter="data")
+    manifest_file = dest / "manifest.json"
+    if not manifest_file.exists() or not (dest / "db.dump").exists():
+        raise InvalidOperation("This file is not a Pick2LIGHT backup")
+    return json.loads(manifest_file.read_text())
+
+
+def _swap_attachments(target: Path, restored: Path) -> None:
+    staging = target.with_name(target.name + ".restoring")
+    old = target.with_name(target.name + ".old")
+    shutil.rmtree(staging, ignore_errors=True)
+    shutil.rmtree(old, ignore_errors=True)
+    if restored.exists():
+        shutil.copytree(restored, staging)
+    else:
+        staging.mkdir(parents=True)
+    if target.exists():
+        target.rename(old)
+    staging.rename(target)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+async def restore_backup(
+    settings: Settings, path: Path, app_state: Any, *, safety_backup: bool = True
+) -> None:
+    """Replace the database and attachments with a backup.
+
+    A safety backup of the current data is written first; if loading the chosen backup fails, the
+    safety backup is put back. The caller must not hold an open transaction on this database.
+    """
     if not path.exists():
         raise NotFound(f"Backup {path.name} not found")
     app_state.maintenance = True
     try:
         with tempfile.TemporaryDirectory(dir=_backup_dir(settings)) as tmp:
             tmp_path = Path(tmp)
-
-            def _extract() -> None:
-                with tarfile.open(path, "r:gz") as tar:
-                    tar.extractall(tmp_path, filter="data")
-
-            await asyncio.to_thread(_extract)
-            manifest_file = tmp_path / "manifest.json"
-            if not manifest_file.exists() or not (tmp_path / "db.dump").exists():
-                raise InvalidOperation("This file is not a Pick2LIGHT backup")
-            manifest = json.loads(manifest_file.read_text())
+            manifest = await asyncio.to_thread(_extract, path, tmp_path / "chosen")
             revision = manifest.get("alembic_revision")
             if revision and revision not in _known_revisions():
                 raise InvalidOperation("This backup comes from a newer Pick2LIGHT version; update first")
-            await _run(
-                "pg_restore",
-                "--clean",
-                "--if-exists",
-                "--no-owner",
-                "-d",
-                libpq_url(settings.database_url),
-                str(tmp_path / "db.dump"),
+            safety = await create_backup(settings) if safety_backup else None
+            try:
+                await _replace_database(settings.database_url, tmp_path / "chosen" / "db.dump")
+            except Exception as exc:
+                if safety is not None:
+                    await asyncio.to_thread(
+                        _extract, _backup_dir(settings) / safety.name, tmp_path / "safety"
+                    )
+                    await _replace_database(settings.database_url, tmp_path / "safety" / "db.dump")
+                    raise InvalidOperation(
+                        f"Restore failed and your previous data was put back: {exc}"
+                    ) from exc
+                raise
+            await asyncio.to_thread(
+                _swap_attachments, settings.attachments_dir, tmp_path / "chosen" / "attachments"
             )
-            target = settings.attachments_dir
-            restored = tmp_path / "attachments"
-            staging = target.with_name(target.name + ".restoring")
-            old = target.with_name(target.name + ".old")
-            shutil.rmtree(staging, ignore_errors=True)
-            shutil.rmtree(old, ignore_errors=True)
-            if restored.exists():
-                shutil.copytree(restored, staging)
-            else:
-                staging.mkdir(parents=True)
-            if target.exists():
-                target.rename(old)
-            staging.rename(target)
-            shutil.rmtree(old, ignore_errors=True)
         from pick2light.cli import run_migrations
 
         await asyncio.to_thread(run_migrations, settings.database_url)

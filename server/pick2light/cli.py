@@ -80,7 +80,9 @@ def restore(
     if not yes:
         typer.echo("Restoring replaces ALL current data. Re-run with --yes to confirm.", err=True)
         raise typer.Exit(1)
-    asyncio.run(restore_backup(get_settings(), file, SimpleNamespace(maintenance=False)))
+    asyncio.run(
+        restore_backup(get_settings(), file, SimpleNamespace(maintenance=False))
+    )  # writes a safety backup first
     typer.echo(f"Restored {file.name}")
 
 
