@@ -8,9 +8,14 @@ from pick2light.core import packs
 from pick2light.core.categories import (
     KEY_PATTERN,
     CategoryIn,
+    FieldDefIn,
+    LogEntryTypeIn,
+    add_field,
     create_category,
+    create_log_type,
     effective_field_defs,
     effective_log_types,
+    effective_tracking_mode,
 )
 from pick2light.errors import NotFound
 from pick2light.models import Category
@@ -92,11 +97,44 @@ async def test_electronics_si_sku(db):
 
 async def test_computer_pack_all_unit_tracked(db):
     await packs.apply_pack(db, packs.load_builtin_pack("computer"))
-    for name in ("RAM", "CPUs", "PCIe Cards", "Drives", "Peripherals"):
+    for name in ("Computer", "RAM", "CPUs", "PCIe Cards", "Drives", "Peripherals"):
         cat = await _by_name(db, name)
-        assert cat is not None and (cat.tracking_mode == "unit" or cat.parent_id is not None)
-    root = await _by_name(db, "Computer")
-    assert root.tracking_mode == "unit"
+        assert await effective_tracking_mode(db, cat.id) == "unit", name
+
+
+async def test_bulk_packs_effective_bulk(db):
+    for pack_id in ("electronics", "hardware"):
+        await packs.apply_pack(db, packs.load_builtin_pack(pack_id))
+    for name in ("Resistors", "Modules", "Screws/Bolts", "Wire", "Connectors"):
+        cat = await _by_name(db, name)
+        assert await effective_tracking_mode(db, cat.id) == "bulk", name
+
+
+async def test_export_child_is_standalone(db):
+    await packs.apply_pack(db, packs.load_builtin_pack("computer"))
+    computer = await _by_name(db, "Computer")
+    await add_field(
+        db, computer.id, FieldDefIn(key="shelf_note", label="Note", type="text", scope="unit")
+    )
+    await create_log_type(
+        db, computer.id, LogEntryTypeIn(key="inspection", name="Inspection", applies_to="unit")
+    )
+    ram = await _by_name(db, "RAM")
+    exported = packs.Pack.model_validate_json(
+        (await packs.export_pack(db, ram.id)).model_dump_json()
+    )
+    assert exported.categories[0].tracking_mode == "unit"
+
+    result = await packs.apply_pack(db, exported)
+    assert result.created == 1
+    copy = await db.scalar(
+        select(Category).where(Category.name == "RAM", Category.parent_id.is_(None))
+    )
+    assert await effective_tracking_mode(db, copy.id) == "unit"
+    fields = {f.key: f.scope for f in await effective_field_defs(db, copy.id)}
+    assert fields["shelf_note"] == "unit"
+    assert "gen" in fields
+    assert {t.key for t in await effective_log_types(db, copy.id)} == {"memtest", "inspection"}
 
 
 async def test_apply_twice_skips(db):

@@ -200,17 +200,34 @@ async def apply_pack(db: AsyncSession, pack: Pack, parent_id: int | None = None)
 # --------------------------------------------------------------------------- export
 
 
-async def _export_node(db: AsyncSession, category: Category) -> CategoryNode:
-    fields = await db.scalars(
-        select(FieldDefinition)
-        .where(FieldDefinition.category_id == category.id)
-        .order_by(FieldDefinition.order, FieldDefinition.id)
+def _log_type_in(t: LogEntryType) -> LogEntryTypeIn:
+    return LogEntryTypeIn(
+        key=t.key,
+        name=t.name,
+        icon=t.icon,
+        applies_to=t.applies_to,
+        fields=[FieldBase.model_validate(f) for f in t.fields],
+        summary_fields=list(t.summary_fields),
     )
-    log_types = await db.scalars(
-        select(LogEntryType)
-        .where(LogEntryType.category_id == category.id, LogEntryType.deleted_at.is_(None))
-        .order_by(LogEntryType.id)
+
+
+async def _export_node(db: AsyncSession, category: Category, root: bool = False) -> CategoryNode:
+    """`root` nodes also carry what they inherit, so the subtree can be applied on its own."""
+    own = [category.id] if not root else [c.id for c in await svc.ancestors(db, category.id)]
+    depth = {cid: i for i, cid in enumerate(own)}
+    fields = sorted(
+        await db.scalars(select(FieldDefinition).where(FieldDefinition.category_id.in_(own))),
+        key=lambda f: (depth[f.category_id], f.order, f.id),
     )
+    log_types = sorted(
+        await db.scalars(
+            select(LogEntryType).where(
+                LogEntryType.category_id.in_(own), LogEntryType.deleted_at.is_(None)
+            )
+        ),
+        key=lambda t: (depth[t.category_id], t.id),
+    )
+    mode = await svc.effective_tracking_mode(db, category.id) if root else category.tracking_mode
     children = await db.scalars(
         select(Category)
         .where(Category.parent_id == category.id, Category.deleted_at.is_(None))
@@ -219,22 +236,12 @@ async def _export_node(db: AsyncSession, category: Category) -> CategoryNode:
     return CategoryNode(
         name=category.name,
         icon=category.icon,
-        tracking_mode=category.tracking_mode,
+        tracking_mode=mode,
         sku_prefix=category.sku_prefix,
         sku_pattern=category.sku_pattern,
         unit_id_pattern=category.unit_id_pattern,
         fields=[FieldDefIn.model_validate(f, from_attributes=True) for f in fields],
-        log_types=[
-            LogEntryTypeIn(
-                key=t.key,
-                name=t.name,
-                icon=t.icon,
-                applies_to=t.applies_to,
-                fields=[FieldBase.model_validate(f) for f in t.fields],
-                summary_fields=list(t.summary_fields),
-            )
-            for t in log_types
-        ],
+        log_types=[_log_type_in(t) for t in log_types],
         children=[await _export_node(db, c) for c in children],
     )
 
@@ -247,5 +254,5 @@ async def export_pack(db: AsyncSession, category_id: int) -> Pack:
         id=slug,
         name=category.name,
         description=category.description or "",
-        categories=[await _export_node(db, category)],
+        categories=[await _export_node(db, category, root=True)],
     )
