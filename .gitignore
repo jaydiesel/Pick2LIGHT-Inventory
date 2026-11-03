@@ -15,3 +15,4 @@ deploy/docker/backups/
 test-results/
 playwright-report/
 web/openapi.json
+web/e2e/.auth/
