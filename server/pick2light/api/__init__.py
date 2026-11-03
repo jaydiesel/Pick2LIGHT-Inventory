@@ -7,6 +7,7 @@ from pick2light.api import (
     items,
     location_types,
     locations,
+    logs,
     stock,
     units,
 )
@@ -20,3 +21,4 @@ api_router.include_router(barcodes.router)
 api_router.include_router(items.router)
 api_router.include_router(units.router)
 api_router.include_router(stock.router)
+api_router.include_router(logs.router)

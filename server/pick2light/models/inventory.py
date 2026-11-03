@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -5,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Computed,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -174,3 +176,29 @@ class StockMovement(TimestampMixin, Base):
         ForeignKey("stock_movement.id"), unique=True
     )
     note: Mapped[str | None] = mapped_column(Text)
+
+
+class LogEntry(TimestampMixin, Base):
+    """One history record (e.g. a capacity test) on a unit or on an item.
+
+    Exactly one of `unit_id` / `item_id` is set. The newest entry per log type is exposed
+    by the `unit_latest_values` / `item_latest_values` views (see migration 0006).
+    """
+
+    __tablename__ = "log_entry"
+    __table_args__ = (CheckConstraint("(unit_id IS NULL) <> (item_id IS NULL)", name="one_target"),)
+
+    log_entry_type_id: Mapped[int] = mapped_column(ForeignKey("log_entry_type.id"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id"))
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id"))
+    performed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    values: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+Index("ix_log_entry_unit", LogEntry.unit_id, LogEntry.log_entry_type_id, LogEntry.performed_at)
+Index("ix_log_entry_item", LogEntry.item_id, LogEntry.log_entry_type_id, LogEntry.performed_at)
