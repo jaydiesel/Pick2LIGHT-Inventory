@@ -1,0 +1,5 @@
+﻿Name;Resistance;Package
+E2E Resistor 1k; 1k ;0805
+
+E2E Resistor bad;10k;9999
+E2E Resistor 22k;22k;0603
