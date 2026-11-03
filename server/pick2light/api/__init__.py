@@ -12,6 +12,7 @@ from pick2light.api import (
     logs,
     packs,
     purchase,
+    scan,
     search,
     settings,
     setup,
@@ -42,6 +43,7 @@ for module in (
     logs,
     attachments,
     purchase,
+    scan,
     search,
     trash,
 ):
