@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -60,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.recent_unknown = deque(maxlen=50)
     app.state.engine = make_engine(settings.database_url)
     app.state.sessionmaker = make_sessionmaker(app.state.engine)
 

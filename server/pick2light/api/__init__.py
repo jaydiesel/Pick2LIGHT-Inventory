@@ -11,6 +11,7 @@ from pick2light.api import (
     locations,
     logs,
     purchase,
+    scan,
     search,
     settings,
     setup,
@@ -36,6 +37,7 @@ PROTECTED = [
     search.router,
     trash.router,
     setup.router,
+    scan.router,
 ]
 
 api_router = APIRouter()
