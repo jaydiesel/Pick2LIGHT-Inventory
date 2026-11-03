@@ -23,3 +23,11 @@ async def make_category(
         **kw,
     )
     return await create_category(db, data)
+
+
+async def make_location(db: AsyncSession, name: str = "Loc", parent: Any = None, **kw: Any):
+    from pick2light.core.locations import LocationIn, create_location
+
+    return await create_location(
+        db, LocationIn(name=name, parent_id=parent.id if parent is not None else None, **kw)
+    )

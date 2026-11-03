@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.core.fields import FieldSpec
 from pick2light.errors import Conflict, NotFound, ValidationFailed
-from pick2light.models import Category, FieldDefinition, LocationType, LogEntryType
+from pick2light.models import Category, FieldDefinition, Location, LocationType, LogEntryType
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 FieldType = Literal["text", "long_text", "number", "select", "multi_select", "boolean", "date", "url", "file"]
@@ -678,6 +678,13 @@ async def update_location_type(db: AsyncSession, type_id: int, data: LocationTyp
 
 async def delete_location_type(db: AsyncSession, type_id: int) -> None:
     lt = await get_location_type(db, type_id)
+    used = await db.scalar(
+        select(func.count())
+        .select_from(Location)
+        .where(Location.location_type_id == lt.id, Location.deleted_at.is_(None))
+    )
+    if used:
+        raise Conflict(f"'{lt.name}' is used by {used} location(s)")
     await db.delete(lt)
     await db.flush()
 
