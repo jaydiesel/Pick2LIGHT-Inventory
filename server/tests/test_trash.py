@@ -124,3 +124,47 @@ async def test_trash_api(client):
     r = await client.post(f"/api/v1/trash/item/{item['id']}/restore")
     assert r.status_code == 204
     assert (await client.get(f"/api/v1/items/{item['id']}")).status_code == 200
+
+
+async def test_purge_keeps_log_type_that_has_history(db, tmp_path):
+    from pick2light.core.categories import FieldDefIn, LogEntryTypeIn, create_log_type, delete_log_type
+    from pick2light.core.logs import LogEntryIn, add_log_entry
+    from pick2light.models import LogEntry, LogEntryType
+
+    cat = await make_category(db, "Cells", tracking_mode="unit")
+    lt = await create_log_type(
+        db,
+        cat.id,
+        LogEntryTypeIn(
+            key="capacity_test", name="Capacity Test", fields=[FieldDefIn(key="ir", type="number")]
+        ),
+    )
+    unit = await make_unit(db, await make_item(db, cat, "30Q"))
+    await add_log_entry(db, LogEntryIn(log_entry_type_id=lt.id, unit_id=unit.id, values={"ir": 22}))
+    await delete_log_type(db, lt.id)
+    await age(db, LogEntryType, lt.id, 60)
+    await trash.purge_expired(db, 30, root=tmp_path)
+    assert await db.get(LogEntryType, lt.id) is not None
+    assert len(list(await db.scalars(select(LogEntry)))) == 1
+
+
+async def test_restore_category_with_field_key_clash_refused(db):
+    from pick2light.core.categories import FieldDefIn, add_field
+
+    root = await make_category(db, "Electronics")
+    res = await make_category(db, "Resistors", parent=root, fields=[{"key": "tolerance", "type": "text"}])
+    await delete_category(db, res.id)
+    await add_field(db, root.id, FieldDefIn(key="tolerance", type="text"))
+    with pytest.raises(Conflict, match="tolerance"):
+        await trash.restore(db, "category", res.id)
+
+
+async def test_restore_log_type_checks_family_only(db):
+    from pick2light.core.categories import LogEntryTypeIn, create_log_type, delete_log_type
+
+    cells = await make_category(db, "Cells", tracking_mode="unit")
+    drives = await make_category(db, "Drives", tracking_mode="unit")
+    lt = await create_log_type(db, cells.id, LogEntryTypeIn(key="check", name="Check"))
+    await delete_log_type(db, lt.id)
+    await create_log_type(db, drives.id, LogEntryTypeIn(key="check", name="Check"))
+    await trash.restore(db, "log_entry_type", lt.id)

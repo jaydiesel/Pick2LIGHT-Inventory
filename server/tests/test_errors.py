@@ -49,3 +49,19 @@ async def test_request_validation_shape(error_client):
     assert r.status_code == 422
     assert r.json()["error"] == "validation"
     assert "name" in r.json()["fields"]
+
+
+async def test_cross_site_writes_rejected(client):
+    r = await client.post("/api/v1/categories", json={"name": "X"}, headers={"Origin": "http://evil.example"})
+    assert r.status_code == 403 and r.json()["error"] == "forbidden"
+    r = await client.post("/api/v1/categories", json={"name": "X"}, headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+    r = await client.post(
+        "/api/v1/categories",
+        json={"name": "Y"},
+        headers={"Origin": "http://test", "Sec-Fetch-Site": "same-origin"},
+    )
+    assert r.status_code == 201
+    assert (
+        await client.get("/api/v1/categories", headers={"Origin": "http://evil.example"})
+    ).status_code == 200

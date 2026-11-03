@@ -28,6 +28,7 @@ from pick2light.core import si
 from pick2light.core.barcodes import lookup_barcode
 from pick2light.core.fields import FieldSpec, display_values
 from pick2light.core.locations import LocationRef, subtree_ids
+from pick2light.core.stock import on_hand_expr
 from pick2light.errors import ValidationFailed
 from pick2light.models import Category, FieldDefinition, Item, Location, LogEntryType, Stock, Unit
 
@@ -167,19 +168,6 @@ async def _log_type(db: AsyncSession, key: str) -> LogEntryType | None:
     )
 
 
-def _on_hand_expr() -> ColumnElement:
-    stock_sum = (
-        select(func.coalesce(func.sum(Stock.quantity), 0)).where(Stock.item_id == Item.id).scalar_subquery()
-    )
-    unit_count = (
-        select(func.count())
-        .select_from(Unit)
-        .where(Unit.item_id == Item.id, Unit.status == "in_stock", Unit.deleted_at.is_(None))
-        .scalar_subquery()
-    )
-    return cast(stock_sum, Numeric) + unit_count
-
-
 # ---------------------------------------------------------------- search
 
 
@@ -284,7 +272,7 @@ async def search(db: AsyncSession, query: SearchQuery) -> SearchPage:
     elif barcode_unit is not None:
         matched_unit = case((Item.id == barcode_item, barcode_unit), else_=None)
 
-    on_hand = _on_hand_expr()
+    on_hand = on_hand_expr()
     if query.low_stock:
         where.append(and_(Item.min_stock.is_not(None), on_hand < Item.min_stock))
 

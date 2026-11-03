@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pick2light.core import categories as cat_svc
 from pick2light.core.attachments import delete_attachment, list_attachments
 from pick2light.core.barcodes import register_barcode, remove_barcodes_for
 from pick2light.errors import Conflict, NotFound
-from pick2light.models import Category, Item, Location, LogEntryType, Stock, Unit
+from pick2light.models import Category, Item, Location, LogEntry, LogEntryType, Stock, Unit
 
 TrashType = Literal["category", "log_entry_type", "item", "unit", "location"]
 _MODELS: dict[str, Any] = {
@@ -66,15 +67,23 @@ async def restore(db: AsyncSession, type_: TrashType, row_id: int) -> None:
     row = await _deleted(db, type_, row_id)
     if type_ == "category":
         await _alive(db, Category, row.parent_id)
+        cats = await cat_svc._all(db)
+        cats[row.id] = row
+        family = [c for c in cat_svc._related_ids(cats, row.id) if c != row.id]
+        own_fields = await cat_svc._field_keys(db, [row.id])
+        clash = own_fields & await cat_svc._field_keys(db, family)
+        if clash:
+            raise Conflict(
+                f"Field key '{sorted(clash)[0]}' now exists in a related category; rename one first"
+            )
+        log_clash = await cat_svc._log_type_keys(db, [row.id]) & await cat_svc._log_type_keys(db, family)
+        if log_clash:
+            raise Conflict(f"Log type '{sorted(log_clash)[0]}' now exists in a related category")
     elif type_ == "log_entry_type":
         await _alive(db, Category, row.category_id)
-        clash = await db.scalar(
-            select(LogEntryType.id).where(
-                LogEntryType.key == row.key, LogEntryType.deleted_at.is_(None), LogEntryType.id != row.id
-            )
-        )
-        if clash:
-            raise Conflict(f"Another log type now uses the key '{row.key}'")
+        family = cat_svc._related_ids(await cat_svc._all(db), row.category_id)
+        if row.key in await cat_svc._log_type_keys(db, family):
+            raise Conflict(f"Another log type in this category family now uses the key '{row.key}'")
     elif type_ == "item":
         await _alive(db, Category, row.category_id)
         row.deleted_at = None
@@ -131,6 +140,9 @@ async def purge_expired(db: AsyncSession, retention_days: int, *, root: Path) ->
         purged += 1
 
     for lt in list(await db.scalars(select(LogEntryType).where(LogEntryType.deleted_at < cutoff))):
+        has_history = await db.scalar(select(LogEntry.id).where(LogEntry.log_entry_type_id == lt.id).limit(1))
+        if has_history:
+            continue  # never destroy recorded tests; the type stays restorable in the trash
         await db.delete(lt)
         await db.flush()
         purged += 1

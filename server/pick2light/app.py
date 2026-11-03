@@ -3,6 +3,7 @@ import logging
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,6 +16,7 @@ from pick2light.errors import AppError, NotFound, ValidationFailed
 
 log = logging.getLogger("pick2light")
 PURGE_INTERVAL_S = 24 * 3600
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 async def _purge_loop(app: FastAPI) -> None:
@@ -64,6 +66,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.recent_unknown = deque(maxlen=50)
     app.state.maintenance = False
+
+    @app.middleware("http")
+    async def _same_origin_writes(request: Request, call_next):
+        """Block cross-site form posts (matters most when the login is switched off)."""
+        if request.method in UNSAFE_METHODS and request.url.path.startswith("/api/"):
+            fetch_site = request.headers.get("sec-fetch-site")
+            origin = request.headers.get("origin")
+            foreign_origin = origin not in (None, "null") and urlsplit(origin).netloc != request.headers.get(
+                "host"
+            )
+            if fetch_site in ("cross-site", "same-site") or foreign_origin:
+                return JSONResponse(
+                    {"error": "forbidden", "message": "Requests from other websites are not allowed"},
+                    status_code=403,
+                )
+        return await call_next(request)
 
     @app.middleware("http")
     async def _maintenance(request: Request, call_next):

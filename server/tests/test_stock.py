@@ -243,3 +243,24 @@ async def test_unit_actions_api(client):
     r = await client.post(f"/api/v1/units/{unit['id']}/consume")
     assert r.json()["status"] == "consumed"
     assert (await client.post(f"/api/v1/units/{unit['id']}/dispose")).status_code == 400
+
+
+async def test_low_stock_uses_constant_queries(db):
+    from sqlalchemy import event
+
+    cat = await make_category(db, "Screws")
+    loc = await make_location(db, "A1")
+    for i in range(20):
+        item = await make_item(db, cat, f"S{i}", min_stock=10)
+        if i:
+            await stock.add_stock(db, item.id, loc.id, i)
+    statements = []
+    sync_engine = db.bind.sync_engine if hasattr(db.bind, "sync_engine") else db.bind.engine.sync_engine
+    listener = lambda *a, **k: statements.append(1)  # noqa: E731
+    event.listen(sync_engine, "before_cursor_execute", listener)
+    try:
+        rows = await stock.low_stock(db)
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", listener)
+    assert len(rows) == 10 and rows[0].on_hand == 0
+    assert len(statements) <= 3

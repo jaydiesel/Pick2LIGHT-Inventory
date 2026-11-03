@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import Numeric, cast, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -478,20 +478,31 @@ async def item_stock(db: AsyncSession, item_id: int) -> list[StockRow]:
     return sorted(out, key=lambda r: [p.name.lower() for p in r.location_path])
 
 
-async def low_stock(db: AsyncSession) -> list[LowStockRow]:
-    items = await db.scalars(
-        select(Item).where(Item.min_stock.is_not(None), Item.deleted_at.is_(None)).order_by(Item.name)
+def on_hand_expr() -> Any:
+    """SQL expression for an item's on-hand quantity (bulk stock sum + in-stock units)."""
+    stock_sum = (
+        select(func.coalesce(func.sum(Stock.quantity), 0)).where(Stock.item_id == Item.id).scalar_subquery()
     )
-    out = []
-    for item in items:
-        qty = await on_hand(db, item.id)
-        if item.min_stock is not None and qty < item.min_stock:
-            out.append(
-                LowStockRow(
-                    item_id=item.id, name=item.name, sku=item.sku, on_hand=qty, min_stock=item.min_stock
-                )
-            )
-    return out
+    unit_count = (
+        select(func.count())
+        .select_from(Unit)
+        .where(Unit.item_id == Item.id, Unit.status == "in_stock", Unit.deleted_at.is_(None))
+        .scalar_subquery()
+    )
+    return cast(stock_sum, Numeric) + unit_count
+
+
+async def low_stock(db: AsyncSession) -> list[LowStockRow]:
+    qty = on_hand_expr()
+    rows = await db.execute(
+        select(Item.id, Item.name, Item.sku, qty, Item.min_stock)
+        .where(Item.min_stock.is_not(None), Item.deleted_at.is_(None), qty < Item.min_stock)
+        .order_by(func.lower(Item.name), Item.id)
+    )
+    return [
+        LowStockRow(item_id=i, name=n, sku=sku, on_hand=float(q or 0), min_stock=m)
+        for i, n, sku, q, m in rows
+    ]
 
 
 async def _ref(
