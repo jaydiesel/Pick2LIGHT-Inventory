@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -112,4 +112,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RequestValidationError, _request_validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.include_router(api_router, prefix="/api/v1")
+    if app.state.settings.web_dist is not None:
+        _add_spa(app, app.state.settings.web_dist)
     return app
+
+
+def _add_spa(app: FastAPI, web_dist: Path) -> None:
+    """Serve the built web app; unknown non-API GET paths fall back to index.html."""
+    root = web_dist.resolve()
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str) -> Response:
+        if path == "api" or path.startswith("api/"):
+            raise StarletteHTTPException(404, "Not Found")
+        candidate = (root / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
+        return FileResponse(root / "index.html")

@@ -1,0 +1,9 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: var(--p-content-background); color: var(--p-text-color); }
+h1 { margin-top: 0; }
+.muted { color: var(--p-text-muted-color); }
+.error { color: var(--p-red-500, #ef4444); }
+.auth-card { max-width: 28rem; margin: 3rem auto; padding: 0 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.auth-card form, .auth-card section { display: flex; flex-direction: column; gap: 0.75rem; }
+.auth-card label { display: flex; flex-direction: column; gap: 0.25rem; }
+.auth-card label.choice { flex-direction: row; align-items: flex-start; gap: 0.5rem; }
+.wizard-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }

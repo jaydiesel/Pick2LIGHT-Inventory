@@ -27,7 +27,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - run: sudo apt-get update && sudo apt-get install -y libdmtx0t64 postgresql-client
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run mypy pick2light
       - run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+      - run: npm ci
+      - run: cd ../server && uv sync --frozen
+      - name: Generated API types are up to date
+        run: |
+          npm run gen:api
+          git diff --exit-code src/api/schema.d.ts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test -- --run
+      - run: npm run build
