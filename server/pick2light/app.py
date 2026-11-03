@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
@@ -17,6 +18,8 @@ from pick2light.config import Settings, get_settings
 from pick2light.core import attachments, trash
 from pick2light.db import make_engine
 from pick2light.errors import AppError
+
+logger = logging.getLogger(__name__)
 
 
 def _error(
@@ -120,12 +123,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def _add_spa(app: FastAPI, web_dist: Path) -> None:
     """Serve the built web app; unknown non-API GET paths fall back to index.html."""
     root = web_dist.resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        logger.error("web_dist %s has no index.html; the web UI is not built", root)
 
-    @app.get("/{path:path}", include_in_schema=False)
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def spa(path: str) -> Response:
         if path == "api" or path.startswith("api/"):
             raise StarletteHTTPException(404, "Not Found")
-        candidate = (root / path).resolve()
-        if path and candidate.is_file() and candidate.is_relative_to(root):
+        try:
+            candidate = (root / path).resolve()
+            is_file = bool(path) and candidate.is_file() and candidate.is_relative_to(root)
+        except (OSError, ValueError):  # e.g. NUL bytes in the path
+            is_file = False
+        if is_file:
             return FileResponse(candidate)
-        return FileResponse(root / "index.html")
+        if not index.is_file():
+            return _error(404, "not_found", "Web UI not built")
+        return FileResponse(index)

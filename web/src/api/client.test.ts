@@ -47,4 +47,19 @@ describe('apiFetch', () => {
     await expect(apiFetch('/items')).rejects.toBeInstanceOf(ApiError)
     expect(spy).toHaveBeenCalledOnce()
   })
+
+  it('survives a non-JSON error body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>Bad Gateway</html>', { status: 502, statusText: 'Bad Gateway' })))
+    const err = (await apiFetch('/things').catch((e) => e)) as ApiError
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.status).toBe(502)
+    expect(err.error).toBe('error')
+    expect(err.message).toBe('Bad Gateway')
+    expect(err.fields).toEqual({})
+  })
+
+  it('returns undefined for a 204', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+    expect(await apiFetch('/things', { method: 'DELETE' })).toBeUndefined()
+  })
 })

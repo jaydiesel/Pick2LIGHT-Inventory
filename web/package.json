@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest run",
     "gen:api": "cd ../server && uv run pick2light openapi > ../web/openapi.json && cd ../web && openapi-typescript openapi.json -o src/api/schema.d.ts",
     "e2e": "playwright test --pass-with-no-tests"
   },

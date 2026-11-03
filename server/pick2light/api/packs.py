@@ -1,12 +1,14 @@
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 from pydantic import BaseModel
 
-from pick2light.api.deps import DB
+from pick2light.api.deps import DB, require_auth_unless_setup_pending
 from pick2light.core import packs as svc
 from pick2light.core.packs import Pack, PackResult, PackSummary
 from pick2light.errors import ValidationFailed
 
 router = APIRouter(tags=["packs"])
+# Mounted outside the protected group: the setup wizard lists packs before anyone can log in.
+list_router = APIRouter(tags=["packs"], dependencies=[Depends(require_auth_unless_setup_pending)])
 
 
 class ApplyPack(BaseModel):
@@ -15,7 +17,7 @@ class ApplyPack(BaseModel):
     parent_id: int | None = None
 
 
-@router.get("/packs")
+@list_router.get("/packs")
 async def list_packs() -> list[PackSummary]:
     return svc.list_builtin_packs()
 

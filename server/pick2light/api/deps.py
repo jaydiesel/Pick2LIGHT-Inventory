@@ -41,3 +41,10 @@ async def require_auth(request: Request, db: DB) -> None:
 
 
 RequireAuth = Depends(require_auth)
+
+
+async def require_auth_unless_setup_pending(request: Request, db: DB) -> None:
+    """Open while the first-run wizard has not finished (it needs to list starter packs)."""
+    if not await get_setting(db, "setup.completed"):
+        return
+    await require_auth(request, db)

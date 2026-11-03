@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch } from '../api/client'
+import { useSettings } from './settings'
 
 interface AuthStatus {
   mode: 'password' | 'none'
@@ -25,11 +26,13 @@ export const useSession = defineStore('session', () => {
   async function login(username: string, password: string): Promise<void> {
     await apiFetch('/auth/login', { method: 'POST', json: { username, password } })
     authenticated.value = true
+    await useSettings().load() // the full set is only readable once logged in
   }
 
   async function logout(): Promise<void> {
     await apiFetch('/auth/logout', { method: 'POST' })
     authenticated.value = false
+    await useSettings().load() // back to the public subset
     const { default: router } = await import('../router')
     await router.push('/login')
   }

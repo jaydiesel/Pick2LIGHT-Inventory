@@ -2,7 +2,7 @@ import json
 
 from sqlalchemy import select
 
-from pick2light.core.settings import get_setting
+from pick2light.core.settings import get_setting, set_settings
 from pick2light.models import Category, LocationType
 
 LOCATION_TYPES = {"Room", "Cabinet", "Drawer", "Shelf", "Bin", "Tote", "Box"}
@@ -101,5 +101,18 @@ async def test_packs_api(client):
     assert bad.status_code == 422
 
 
-async def test_packs_require_login(auth_client):
+async def test_packs_require_login(auth_client, db):
+    await set_settings(db, {"setup.completed": True})
     assert (await auth_client.get("/api/v1/packs")).status_code == 401
+
+
+async def test_packs_list_open_only_until_setup_completes(fresh_client):
+    assert (await fresh_client.get("/api/v1/packs")).status_code == 200
+    # Applying a pack stays protected even before setup.
+    res = await fresh_client.post("/api/v1/packs/apply", json={"pack_id": "generic"})
+    assert res.status_code == 401
+    body = {"auth_mode": "password", "password": "correct horse"}
+    done = await fresh_client.post("/api/v1/setup", json=body)
+    assert done.status_code == 200
+    fresh_client.cookies.clear()
+    assert (await fresh_client.get("/api/v1/packs")).status_code == 401

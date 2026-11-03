@@ -31,6 +31,7 @@ api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(settings.router)
 api_router.include_router(setup.router)
+api_router.include_router(packs.list_router)
 
 # Everything else needs a login unless `auth.mode` is "none".
 protected = APIRouter(dependencies=[RequireAuth])

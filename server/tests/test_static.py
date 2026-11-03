@@ -76,3 +76,29 @@ async def test_static_gets_503_during_maintenance(tmp_path: Path, dist: Path):
         r = await c.get("/items/5")
         assert r.status_code == 503
         assert r.json()["error"] == "maintenance"
+
+
+async def test_nul_byte_paths_fall_back_to_index(tmp_path: Path, dist: Path):
+    _, c = make_client(tmp_path, dist)
+    async with c:
+        for path in ("/%00", "/a%00b"):
+            r = await c.get(path)
+            assert r.status_code == 200
+            assert r.text == "<html>spa</html>"
+
+
+async def test_head_is_answered(tmp_path: Path, dist: Path):
+    _, c = make_client(tmp_path, dist)
+    async with c:
+        assert (await c.head("/items/5")).status_code == 200
+        assert (await c.head("/assets/app.js")).status_code == 200
+
+
+async def test_missing_index_html_is_json_404(tmp_path: Path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    _, c = make_client(tmp_path, empty)
+    async with c:
+        r = await c.get("/items/5")
+        assert r.status_code == 404
+        assert r.json() == {"error": "not_found", "message": "Web UI not built"}

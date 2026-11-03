@@ -69,4 +69,19 @@ describe('Setup wizard', () => {
     })
     expect(router.currentRoute.value.path).toBe('/')
   })
+
+  it('submits No login without a password', async () => {
+    const { wrapper, router } = await mountSetup()
+    await wrapper.findAll('input[type=radio]')[1].setValue(true)
+    expect(wrapper.find('input[type=password]').exists()).toBe(false)
+    await wrapper.get('[data-test=next]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test=next]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test=finish]').trigger('click')
+    await flushPromises()
+    const post = fetchMock.mock.calls.find(([u, i]) => u.endsWith('/setup') && i?.method === 'POST')!
+    expect(JSON.parse(post[1].body)).toEqual({ auth_mode: 'none', username: 'admin', packs: ['electronics'] })
+    expect(router.currentRoute.value.path).toBe('/')
+  })
 })
