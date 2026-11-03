@@ -142,8 +142,22 @@ def place_file(src: Path, directory: Path, preferred: str | None = None) -> str:
         except FileExistsError:
             candidate = next(names)
             continue
-        os.replace(src, directory / candidate)
+        try:
+            os.replace(src, directory / candidate)
+        except BaseException:
+            (directory / candidate).unlink(missing_ok=True)
+            raise
         return candidate
+
+
+def _scrub(message: str, settings: Settings) -> str:
+    """Hide server directory paths in messages that reach API clients."""
+    for directory, label in (
+        (_backup_dir(settings), "<backup_dir>"),
+        (settings.data_dir, "<data_dir>"),
+    ):
+        message = message.replace(str(directory), label)
+    return message
 
 
 def _write_last(directory: Path, data: dict[str, Any]) -> None:
@@ -217,10 +231,13 @@ async def create_backup(settings: Settings) -> BackupInfo:
     try:
         info = await _create_backup(settings, directory)
     except Exception as exc:
+        message = _scrub(str(exc), settings)
         _write_last(
             directory,
-            {"at": datetime.now().astimezone().isoformat(), "ok": False, "error": str(exc)},
+            {"at": datetime.now().astimezone().isoformat(), "ok": False, "error": message},
         )
+        if isinstance(exc, InvalidOperation):
+            raise InvalidOperation(message) from exc
         raise
     _write_last(
         directory,
@@ -337,31 +354,38 @@ def _swap_attachments(extracted: Path, target: Path) -> None:
 
 
 def _replace_contents(new: Path, target: Path) -> None:
-    """In-place swap for a mount point or symlink: every rename stays inside `target`."""
+    """In-place swap for a mount point or symlink: every rename stays inside `target`.
+
+    On failure the original children are put back and only what this call placed is removed.
+    """
     target.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
     staged, old = target / f".restore-new-{token}", target / f".restore-old-{token}"
     staged.mkdir()
     old.mkdir()
+    moved: list[str] = []
+    placed: list[str] = []
     try:
         for child in new.iterdir():  # may cross filesystems (copy); nothing live is touched yet
             shutil.move(child, staged / child.name)
-        moved: list[Path] = []
         try:
             for child in [c for c in target.iterdir() if c not in (staged, old)]:
                 os.replace(child, old / child.name)
-                moved.append(child)
+                moved.append(child.name)
             for child in list(staged.iterdir()):
                 os.replace(child, target / child.name)
+                placed.append(child.name)
         except BaseException:
-            for child in target.iterdir():
-                if child not in (staged, old):
-                    shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink()
-            for child in moved:
-                os.replace(old / child.name, child)
+            for name in placed:
+                dest = target / name
+                shutil.rmtree(dest, ignore_errors=True) if dest.is_dir() else dest.unlink()
+            for name in moved:
+                os.replace(old / name, target / name)
             raise
     finally:
         shutil.rmtree(staged, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            old.rmdir()  # only when empty: after a failed rollback it still holds originals
     shutil.rmtree(old, ignore_errors=True)
 
 
@@ -390,41 +414,42 @@ async def restore_backup(settings: Settings, path: Path, app_state: Any) -> None
         if not dump.is_file():
             raise InvalidOperation("Backup contains no db.dump")
         url, env = libpq_args(settings.database_url)
-        body, script = work / "body.sql", work / "restore.sql"
+        body = work / "body.sql"
         await _run("pg_restore", "--no-owner", "-f", str(body), str(dump), env=env)
-        await asyncio.to_thread(_build_script, body, script)
         await dispose_engines()
         await _terminate_other_backends(settings.database_url)
         await _run(
             "psql",
             "-w",
             "-q",
+            "-1",
             "-v",
             "ON_ERROR_STOP=1",
-            "--single-transaction",
+            "-c",
+            "SET client_min_messages = warning",
+            "-c",
+            "DROP SCHEMA public CASCADE",
+            "-c",
+            "CREATE SCHEMA public",
             "-f",
-            str(script),
+            str(body),
             url,
             env=env,
         )
+        # The database now matches the backup; put its files in place before migrating.
+        await asyncio.to_thread(_swap_attachments, work, data_dir / "attachments")
         try:
             await asyncio.to_thread(upgrade_database, settings.database_url)
         except Exception as exc:
             raise InvalidOperation(
-                f"Database restored but migrating it to the current version failed: "
-                f"{_head_tail(str(exc))}"
+                "Backup restored, but upgrading the database to the current version failed "
+                f"(it is retried when the server starts): {_head_tail(str(exc))}"
             ) from exc
-        await asyncio.to_thread(_swap_attachments, work, data_dir / "attachments")
+    except InvalidOperation as exc:
+        raise InvalidOperation(_scrub(exc.message, settings)) from exc
     finally:
         app_state.maintenance = False
         await asyncio.to_thread(shutil.rmtree, work, True)
-
-
-def _build_script(body: Path, script: Path) -> None:
-    with script.open("wb") as out:
-        out.write(b"DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n")
-        with body.open("rb") as src:
-            shutil.copyfileobj(src, out)
 
 
 # --- upload ---------------------------------------------------------------------------------

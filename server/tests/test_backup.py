@@ -318,28 +318,6 @@ def test_libpq_args_keep_password_out_of_url() -> None:
     assert "sslmode=require" in url and "timeout" not in url and "ssl=" not in url
 
 
-async def test_password_never_in_argv(
-    settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from sqlalchemy import make_url
-
-    seen: list[tuple[tuple, dict]] = []
-    real = asyncio.create_subprocess_exec
-
-    async def spy(*argv, **kw):
-        seen.append((argv, kw))
-        return await real(*argv, **kw)
-
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
-    password = make_url(settings.database_url).password
-    await service.create_backup(settings)
-    assert seen
-    for argv, kw in seen:
-        assert not any(f":{password}@" in a for a in argv)
-        assert kw["env"]["PGPASSWORD"] == password
-        assert "--no-password" in argv
-
-
 @pytest_asyncio.fixture
 async def scratch_url(database_url: str) -> AsyncIterator[str]:
     """A private database, so restores here cannot disturb the shared test database."""
@@ -527,3 +505,106 @@ def test_swap_attachments_rolls_back_and_handles_symlink(tmp_path: Path, monkeyp
     service._swap_attachments(new_root, link)
     assert link.is_symlink()
     assert sorted(p.name for p in real_dir.iterdir()) == ["new"]
+
+
+async def test_password_never_in_argv(
+    scratch_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from types import SimpleNamespace
+
+    from sqlalchemy import make_url
+
+    from pick2light.db import upgrade_database
+
+    settings = Settings(database_url=scratch_url, data_dir=tmp_path, secret_key="k")
+    await asyncio.to_thread(upgrade_database, scratch_url)
+    seen: list[tuple[tuple, dict]] = []
+    real = asyncio.create_subprocess_exec
+
+    async def spy(*argv, **kw):
+        seen.append((argv, kw))
+        return await real(*argv, **kw)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+    password = make_url(scratch_url).password
+    info = await service.create_backup(settings)
+    await service.restore_backup(
+        settings, settings.backup_dir / info.name, SimpleNamespace(maintenance=False)
+    )
+    tools = {Path(argv[0]).name for argv, _ in seen}
+    assert {"pg_dump", "pg_restore", "psql"} <= tools
+    for argv, kw in seen:
+        assert not any(f":{password}@" in a for a in argv)
+        assert kw["env"]["PGPASSWORD"] == password
+    for argv, _ in seen:
+        if Path(argv[0]).name in ("pg_dump", "psql"):
+            assert "--no-password" in argv or "-w" in argv
+
+
+async def test_psql_failure_midway_keeps_original_data(
+    scratch_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from pick2light.db import upgrade_database
+
+    settings = Settings(database_url=scratch_url, data_dir=tmp_path, secret_key="k")
+    await asyncio.to_thread(upgrade_database, scratch_url)
+    await _exec(scratch_url, "INSERT INTO category (name) VALUES ('Keep')")
+    info = await service.create_backup(settings)
+    await _exec(scratch_url, "UPDATE category SET name = 'Current'")
+    att = tmp_path / "attachments"
+    att.mkdir()
+    (att / "orig").write_text("original")
+
+    real_run = service._run
+
+    async def run(*argv, **kw):
+        await real_run(*argv, **kw)
+        if Path(argv[0]).name == "pg_restore":  # inject a failing statement after the DROP
+            body = Path(argv[argv.index("-f") + 1])
+            body.write_text(body.read_text() + "\nSELECT 1/0;\n")
+
+    monkeypatch.setattr(service, "_run", run)
+    state = SimpleNamespace(maintenance=False)
+    with pytest.raises(InvalidOperation) as err:
+        await asyncio.wait_for(
+            service.restore_backup(settings, settings.backup_dir / info.name, state), 60
+        )
+    assert str(tmp_path) not in err.value.message
+    assert state.maintenance is False
+    assert await _scalar(scratch_url, "SELECT name FROM category") == "Current"
+    assert (att / "orig").read_text() == "original"
+
+
+def test_place_file_removes_placeholder_on_failure(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        service.place_file(tmp_path / "missing", tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_in_place_swap_failure_loses_nothing(tmp_path: Path, monkeypatch) -> None:
+    real_dir = tmp_path / "mnt"
+    real_dir.mkdir()
+    for n in "abc":
+        (real_dir / n).write_text(n)
+    link = tmp_path / "linked"
+    link.symlink_to(real_dir)
+    new_root = tmp_path / "work"
+    (new_root / "attachments").mkdir(parents=True)
+    (new_root / "attachments" / "x").write_text("x")
+    real = os.replace
+    calls = {"n": 0}
+
+    def flaky(src, dst):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("boom")
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky)
+    with pytest.raises(OSError):
+        service._swap_attachments(new_root, link)
+    monkeypatch.setattr(os, "replace", real)
+    assert sorted(p.name for p in real_dir.iterdir()) == ["a", "b", "c"]
+    assert [(real_dir / n).read_text() for n in "abc"] == ["a", "b", "c"]
