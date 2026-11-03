@@ -55,7 +55,7 @@ class Item(TimestampMixin, SoftDeleteMixin, Base):
     attrs: Mapped[dict] = mapped_column(JSONB, default=dict)
     min_stock: Mapped[int | None] = mapped_column(Integer)
     default_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
-    photo_attachment_id: Mapped[int | None] = mapped_column(BigInteger)
+    photo_attachment_id: Mapped[int | None] = mapped_column(ForeignKey("attachment.id", ondelete="SET NULL"))
     search_text: Mapped[str] = mapped_column(Text, default="")
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('simple'::regconfig, coalesce(search_text, ''))", persisted=True)
