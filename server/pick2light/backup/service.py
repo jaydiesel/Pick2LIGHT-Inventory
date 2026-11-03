@@ -151,12 +151,17 @@ def place_file(src: Path, directory: Path, preferred: str | None = None) -> str:
 
 
 def _scrub(message: str, settings: Settings) -> str:
-    """Hide server directory paths in messages that reach API clients."""
+    """Hide absolute server directory paths (matched at path boundaries) in client messages."""
     for directory, label in (
         (_backup_dir(settings), "<backup_dir>"),
         (settings.data_dir, "<data_dir>"),
     ):
-        message = message.replace(str(directory), label)
+        forms = {str(directory.resolve()), str(directory.absolute())}
+        for form in forms:
+            if not form.startswith("/") or form == "/":
+                continue
+            pattern = rf"(?:(?<=^)|(?<=[\s\"'=:(])){re.escape(form)}(?=$|[/\s\"':;,)\]])"
+            message = re.sub(pattern, label, message)
     return message
 
 

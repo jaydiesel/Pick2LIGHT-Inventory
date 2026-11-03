@@ -608,3 +608,23 @@ def test_in_place_swap_failure_loses_nothing(tmp_path: Path, monkeypatch) -> Non
     monkeypatch.setattr(os, "replace", real)
     assert sorted(p.name for p in real_dir.iterdir()) == ["a", "b", "c"]
     assert [(real_dir / n).read_text() for n in "abc"] == ["a", "b", "c"]
+
+
+@pytest.mark.parametrize("rel", ["./data", "."])
+def test_scrub_ignores_relative_data_dir(
+    rel: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(
+        database_url="postgresql+asyncpg://u@h/d", data_dir=Path(rel), secret_key="k"
+    )
+    msg = 'database "x" does not exist, see data/ or a.b'
+    assert service._scrub(msg, settings) == msg
+
+
+def test_scrub_replaces_absolute_paths(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    settings = Settings(database_url="postgresql+asyncpg://u@h/d", data_dir=data, secret_key="k")
+    msg = f'could not open "{data}/tmp/x": denied; dir={data}; {data}x stays'
+    out = service._scrub(msg, settings)
+    assert '"<data_dir>/tmp/x"' in out and "dir=<data_dir>;" in out and f"{data}x stays" in out
