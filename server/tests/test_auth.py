@@ -1,8 +1,6 @@
 import asyncio
 
-import httpx
 import pytest
-import pytest_asyncio
 
 from pick2light.core.auth import (
     hash_password,
@@ -15,15 +13,6 @@ from pick2light.core.settings import set_settings
 from pick2light.errors import ValidationFailed
 
 PASSWORD = "correct horse"
-
-
-@pytest_asyncio.fixture
-async def auth_client(app, db):
-    """A client against an app in password mode (the default) with one user."""
-    await set_password(db, "admin", PASSWORD)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
 
 
 async def login(c, password=PASSWORD):

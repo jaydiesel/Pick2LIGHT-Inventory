@@ -1,0 +1,169 @@
+{
+  "id": "batteries",
+  "name": "Batteries",
+  "description": "Unit-tracked Li-ion cells with capacity-test logging.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Batteries",
+      "icon": "battery",
+      "fields": [],
+      "log_types": [],
+      "children": [
+        {
+          "name": "Li-ion Cells",
+          "tracking_mode": "unit",
+          "sku_prefix": "CELL",
+          "sku_pattern": "CELL-{format}-{model}",
+          "unit_id_pattern": "C{seq:4}",
+          "fields": [
+            {
+              "key": "format",
+              "label": "Format",
+              "type": "select",
+              "options": [
+                {
+                  "value": "18650",
+                  "label": "18650"
+                },
+                {
+                  "value": "21700",
+                  "label": "21700"
+                },
+                {
+                  "value": "26650",
+                  "label": "26650"
+                },
+                {
+                  "value": "32650",
+                  "label": "32650"
+                },
+                {
+                  "value": "14500",
+                  "label": "14500"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "brand",
+              "label": "Brand",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "model",
+              "label": "Model",
+              "type": "text",
+              "required": true
+            },
+            {
+              "key": "rated_capacity",
+              "label": "Rated capacity",
+              "type": "number",
+              "number_unit": "mAh",
+              "number_si_prefixes": false
+            },
+            {
+              "key": "chemistry",
+              "label": "Chemistry",
+              "type": "select",
+              "options": [
+                {
+                  "value": "NMC",
+                  "label": "NMC"
+                },
+                {
+                  "value": "LFP",
+                  "label": "LFP"
+                },
+                {
+                  "value": "LCO",
+                  "label": "LCO"
+                },
+                {
+                  "value": "NCA",
+                  "label": "NCA"
+                },
+                {
+                  "value": "LTO",
+                  "label": "LTO"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "datasheet",
+              "label": "Datasheet",
+              "type": "url"
+            },
+            {
+              "key": "wrap_color",
+              "label": "Wrap color",
+              "type": "text",
+              "scope": "unit"
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "type": "text",
+              "scope": "unit"
+            }
+          ],
+          "log_types": [
+            {
+              "key": "capacity_test",
+              "name": "Capacity Test",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "capacity_mah",
+                  "label": "Capacity",
+                  "type": "number",
+                  "number_unit": "mAh",
+                  "number_si_prefixes": false
+                },
+                {
+                  "key": "ir_mohm",
+                  "label": "Internal resistance",
+                  "type": "number",
+                  "number_unit": "mΩ",
+                  "number_si_prefixes": false
+                },
+                {
+                  "key": "storage_v",
+                  "label": "Storage voltage",
+                  "type": "number",
+                  "number_unit": "V",
+                  "number_si_prefixes": false,
+                  "decimals": 2
+                },
+                {
+                  "key": "tester",
+                  "label": "Tester",
+                  "type": "text"
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "capacity_mah",
+                "ir_mohm",
+                "storage_v"
+              ]
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,648 @@
+{
+  "id": "hardware",
+  "name": "Hardware",
+  "description": "Fasteners, wire and connectors.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Hardware",
+      "icon": "wrench",
+      "tracking_mode": "bulk",
+      "fields": [],
+      "log_types": [],
+      "children": [
+        {
+          "name": "Screws/Bolts",
+          "sku_prefix": "SCR",
+          "sku_pattern": "SCR-{thread}-{length}-{head}",
+          "fields": [
+            {
+              "key": "thread",
+              "label": "Thread",
+              "type": "select",
+              "options": [
+                {
+                  "value": "M2",
+                  "label": "M2"
+                },
+                {
+                  "value": "M2.5",
+                  "label": "M2.5"
+                },
+                {
+                  "value": "M3",
+                  "label": "M3"
+                },
+                {
+                  "value": "M4",
+                  "label": "M4"
+                },
+                {
+                  "value": "M5",
+                  "label": "M5"
+                },
+                {
+                  "value": "M6",
+                  "label": "M6"
+                },
+                {
+                  "value": "#4-40",
+                  "label": "#4-40",
+                  "sku_code": "4-40"
+                },
+                {
+                  "value": "#6-32",
+                  "label": "#6-32",
+                  "sku_code": "6-32"
+                },
+                {
+                  "value": "#8-32",
+                  "label": "#8-32",
+                  "sku_code": "8-32"
+                },
+                {
+                  "value": "1/4-20",
+                  "label": "1/4-20",
+                  "sku_code": "1_4-20"
+                }
+              ],
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "length",
+              "label": "Length",
+              "type": "number",
+              "number_unit": "mm",
+              "number_si_prefixes": false,
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "head",
+              "label": "Head",
+              "type": "select",
+              "options": [
+                {
+                  "value": "socket_head",
+                  "label": "socket_head",
+                  "sku_code": "SHCS"
+                },
+                {
+                  "value": "button_head",
+                  "label": "button_head",
+                  "sku_code": "BHCS"
+                },
+                {
+                  "value": "flat_head",
+                  "label": "flat_head",
+                  "sku_code": "FHCS"
+                },
+                {
+                  "value": "pan_head",
+                  "label": "pan_head",
+                  "sku_code": "PH"
+                },
+                {
+                  "value": "hex",
+                  "label": "hex",
+                  "sku_code": "HEX"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "drive",
+              "label": "Drive",
+              "type": "select",
+              "options": [
+                {
+                  "value": "hex_socket",
+                  "label": "hex_socket"
+                },
+                {
+                  "value": "phillips",
+                  "label": "phillips"
+                },
+                {
+                  "value": "slotted",
+                  "label": "slotted"
+                },
+                {
+                  "value": "torx",
+                  "label": "torx"
+                },
+                {
+                  "value": "hex_head",
+                  "label": "hex_head"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "material",
+              "label": "Material",
+              "type": "select",
+              "options": [
+                {
+                  "value": "steel",
+                  "label": "steel"
+                },
+                {
+                  "value": "stainless",
+                  "label": "stainless"
+                },
+                {
+                  "value": "brass",
+                  "label": "brass"
+                },
+                {
+                  "value": "nylon",
+                  "label": "nylon"
+                },
+                {
+                  "value": "aluminium",
+                  "label": "aluminium"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            }
+          ],
+          "log_types": [],
+          "children": []
+        },
+        {
+          "name": "Nuts",
+          "sku_prefix": "NUT",
+          "sku_pattern": "NUT-{thread}-{type}",
+          "fields": [
+            {
+              "key": "thread",
+              "label": "Thread",
+              "type": "select",
+              "options": [
+                {
+                  "value": "M2",
+                  "label": "M2"
+                },
+                {
+                  "value": "M2.5",
+                  "label": "M2.5"
+                },
+                {
+                  "value": "M3",
+                  "label": "M3"
+                },
+                {
+                  "value": "M4",
+                  "label": "M4"
+                },
+                {
+                  "value": "M5",
+                  "label": "M5"
+                },
+                {
+                  "value": "M6",
+                  "label": "M6"
+                },
+                {
+                  "value": "#4-40",
+                  "label": "#4-40",
+                  "sku_code": "4-40"
+                },
+                {
+                  "value": "#6-32",
+                  "label": "#6-32",
+                  "sku_code": "6-32"
+                },
+                {
+                  "value": "#8-32",
+                  "label": "#8-32",
+                  "sku_code": "8-32"
+                },
+                {
+                  "value": "1/4-20",
+                  "label": "1/4-20",
+                  "sku_code": "1_4-20"
+                }
+              ],
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "type",
+              "label": "Type",
+              "type": "select",
+              "options": [
+                {
+                  "value": "hex",
+                  "label": "hex"
+                },
+                {
+                  "value": "nyloc",
+                  "label": "nyloc"
+                },
+                {
+                  "value": "wing",
+                  "label": "wing"
+                },
+                {
+                  "value": "square",
+                  "label": "square"
+                },
+                {
+                  "value": "flange",
+                  "label": "flange"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "material",
+              "label": "Material",
+              "type": "select",
+              "options": [
+                {
+                  "value": "steel",
+                  "label": "steel"
+                },
+                {
+                  "value": "stainless",
+                  "label": "stainless"
+                },
+                {
+                  "value": "brass",
+                  "label": "brass"
+                },
+                {
+                  "value": "nylon",
+                  "label": "nylon"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            }
+          ],
+          "log_types": [],
+          "children": []
+        },
+        {
+          "name": "Washers",
+          "sku_prefix": "WSH",
+          "sku_pattern": "WSH-{thread}-{type}",
+          "fields": [
+            {
+              "key": "thread",
+              "label": "Thread",
+              "type": "select",
+              "options": [
+                {
+                  "value": "M2",
+                  "label": "M2"
+                },
+                {
+                  "value": "M2.5",
+                  "label": "M2.5"
+                },
+                {
+                  "value": "M3",
+                  "label": "M3"
+                },
+                {
+                  "value": "M4",
+                  "label": "M4"
+                },
+                {
+                  "value": "M5",
+                  "label": "M5"
+                },
+                {
+                  "value": "M6",
+                  "label": "M6"
+                },
+                {
+                  "value": "#4-40",
+                  "label": "#4-40",
+                  "sku_code": "4-40"
+                },
+                {
+                  "value": "#6-32",
+                  "label": "#6-32",
+                  "sku_code": "6-32"
+                },
+                {
+                  "value": "#8-32",
+                  "label": "#8-32",
+                  "sku_code": "8-32"
+                },
+                {
+                  "value": "1/4-20",
+                  "label": "1/4-20",
+                  "sku_code": "1_4-20"
+                }
+              ],
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "type",
+              "label": "Type",
+              "type": "select",
+              "options": [
+                {
+                  "value": "flat",
+                  "label": "flat"
+                },
+                {
+                  "value": "lock",
+                  "label": "lock"
+                },
+                {
+                  "value": "fender",
+                  "label": "fender"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "material",
+              "label": "Material",
+              "type": "select",
+              "options": [
+                {
+                  "value": "steel",
+                  "label": "steel"
+                },
+                {
+                  "value": "stainless",
+                  "label": "stainless"
+                },
+                {
+                  "value": "brass",
+                  "label": "brass"
+                },
+                {
+                  "value": "nylon",
+                  "label": "nylon"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            }
+          ],
+          "log_types": [],
+          "children": []
+        },
+        {
+          "name": "Standoffs",
+          "sku_prefix": "STD",
+          "sku_pattern": "STD-{thread}-{length}-{gender}",
+          "fields": [
+            {
+              "key": "thread",
+              "label": "Thread",
+              "type": "select",
+              "options": [
+                {
+                  "value": "M2",
+                  "label": "M2"
+                },
+                {
+                  "value": "M2.5",
+                  "label": "M2.5"
+                },
+                {
+                  "value": "M3",
+                  "label": "M3"
+                },
+                {
+                  "value": "M4",
+                  "label": "M4"
+                },
+                {
+                  "value": "M5",
+                  "label": "M5"
+                },
+                {
+                  "value": "M6",
+                  "label": "M6"
+                },
+                {
+                  "value": "#4-40",
+                  "label": "#4-40",
+                  "sku_code": "4-40"
+                },
+                {
+                  "value": "#6-32",
+                  "label": "#6-32",
+                  "sku_code": "6-32"
+                },
+                {
+                  "value": "#8-32",
+                  "label": "#8-32",
+                  "sku_code": "8-32"
+                },
+                {
+                  "value": "1/4-20",
+                  "label": "1/4-20",
+                  "sku_code": "1_4-20"
+                }
+              ],
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "length",
+              "label": "Length",
+              "type": "number",
+              "number_unit": "mm",
+              "number_si_prefixes": false,
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "gender",
+              "label": "Gender",
+              "type": "select",
+              "options": [
+                {
+                  "value": "F-F",
+                  "label": "F-F"
+                },
+                {
+                  "value": "M-F",
+                  "label": "M-F"
+                },
+                {
+                  "value": "M-M",
+                  "label": "M-M"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "material",
+              "label": "Material",
+              "type": "select",
+              "options": [
+                {
+                  "value": "steel",
+                  "label": "steel"
+                },
+                {
+                  "value": "stainless",
+                  "label": "stainless"
+                },
+                {
+                  "value": "brass",
+                  "label": "brass"
+                },
+                {
+                  "value": "nylon",
+                  "label": "nylon"
+                },
+                {
+                  "value": "aluminium",
+                  "label": "aluminium"
+                },
+                {
+                  "value": "other",
+                  "label": "other"
+                }
+              ],
+              "filterable": true
+            }
+          ],
+          "log_types": [],
+          "children": []
+        },
+        {
+          "name": "Wire",
+          "sku_prefix": "WIRE",
+          "sku_pattern": "WIRE-{awg}-{color}-{conductor}",
+          "fields": [
+            {
+              "key": "awg",
+              "label": "AWG",
+              "type": "number",
+              "number_unit": null,
+              "number_si_prefixes": false,
+              "decimals": 0,
+              "min": 0,
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "color",
+              "label": "Color",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "conductor",
+              "label": "Conductor",
+              "type": "select",
+              "options": [
+                {
+                  "value": "solid",
+                  "label": "solid"
+                },
+                {
+                  "value": "stranded",
+                  "label": "stranded"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "insulation",
+              "label": "Insulation",
+              "type": "text"
+            },
+            {
+              "key": "length_m",
+              "label": "Length on spool",
+              "type": "number",
+              "number_unit": "m",
+              "number_si_prefixes": false
+            }
+          ],
+          "log_types": [],
+          "children": []
+        },
+        {
+          "name": "Connectors",
+          "sku_prefix": "CON",
+          "sku_pattern": "CON-{family}-{pins}{gender}",
+          "fields": [
+            {
+              "key": "family",
+              "label": "Family",
+              "type": "text",
+              "filterable": true,
+              "required": true
+            },
+            {
+              "key": "pins",
+              "label": "Pins",
+              "type": "number",
+              "number_unit": null,
+              "number_si_prefixes": false,
+              "decimals": 0,
+              "min": 1,
+              "filterable": true
+            },
+            {
+              "key": "pitch_mm",
+              "label": "Pitch",
+              "type": "number",
+              "number_unit": "mm",
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "gender",
+              "label": "Gender",
+              "type": "select",
+              "options": [
+                {
+                  "value": "M",
+                  "label": "M"
+                },
+                {
+                  "value": "F",
+                  "label": "F"
+                }
+              ],
+              "filterable": true
+            }
+          ],
+          "log_types": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

@@ -21,6 +21,7 @@ os.environ.setdefault("P2L_DATA_DIR", tempfile.mkdtemp(prefix="p2l-test-data-"))
 
 from pick2light.app import create_app  # noqa: E402
 from pick2light.config import Settings  # noqa: E402
+from pick2light.core.auth import set_password  # noqa: E402
 from pick2light.core.settings import set_settings  # noqa: E402
 from pick2light.db import get_db, upgrade_database  # noqa: E402
 
@@ -130,6 +131,23 @@ async def client(app: FastAPI, db: AsyncSession) -> AsyncIterator[httpx.AsyncCli
     Tests of password mode build their own client (see `auth_client` in test_auth.py).
     """
     await set_settings(db, {"auth.mode": "none"})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def auth_client(app: FastAPI, db: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
+    """A client against an app in password mode (the default) with one user."""
+    await set_password(db, "admin", "correct horse")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def fresh_client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    """A client against a brand-new install: password mode, no user, setup not completed."""
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

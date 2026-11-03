@@ -1,7 +1,13 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from pick2light.api.deps import DB, SESSION_COOKIE, RequireAuth, is_authenticated
+from pick2light.api.deps import (
+    DB,
+    SESSION_COOKIE,
+    RequireAuth,
+    is_authenticated,
+    set_session_cookie,
+)
 from pick2light.core import auth
 from pick2light.core.settings import get_setting
 from pick2light.errors import InvalidOperation, ValidationFailed
@@ -49,14 +55,7 @@ async def login(body: Login, request: Request, response: Response, db: DB) -> Ok
         or not auth.verify_password(user.password_hash, body.password)
     ):
         raise HTTPException(status_code=401, detail="Wrong username or password")
-    response.set_cookie(
-        SESSION_COOKIE,
-        auth.make_session_token(request.app.state.settings.secret_key, user.id),
-        max_age=auth.SESSION_MAX_AGE_S,
-        httponly=True,
-        samesite="lax",
-        path="/",
-    )
+    set_session_cookie(response, request.app.state.settings.secret_key, user.id)
     return Ok()
 
 

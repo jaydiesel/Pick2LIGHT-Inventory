@@ -1,0 +1,308 @@
+{
+  "id": "electronics",
+  "name": "Electronics",
+  "description": "Passives, semiconductors and modules, with SI-valued fields and package codes.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Electronics",
+      "icon": "cpu",
+      "tracking_mode": "bulk",
+      "fields": [
+        {
+          "key": "datasheet",
+          "label": "Datasheet",
+          "type": "url"
+        },
+        {
+          "key": "mpn",
+          "label": "MPN",
+          "type": "text"
+        },
+        {
+          "key": "package",
+          "label": "Package",
+          "type": "select",
+          "options": [
+            {
+              "value": "0201",
+              "label": "0201"
+            },
+            {
+              "value": "0402",
+              "label": "0402"
+            },
+            {
+              "value": "0603",
+              "label": "0603"
+            },
+            {
+              "value": "0805",
+              "label": "0805"
+            },
+            {
+              "value": "1206",
+              "label": "1206"
+            },
+            {
+              "value": "1210",
+              "label": "1210"
+            },
+            {
+              "value": "2512",
+              "label": "2512"
+            },
+            {
+              "value": "SOD-123",
+              "label": "SOD-123"
+            },
+            {
+              "value": "SOT-23",
+              "label": "SOT-23"
+            },
+            {
+              "value": "SOT-223",
+              "label": "SOT-223"
+            },
+            {
+              "value": "SOIC-8",
+              "label": "SOIC-8"
+            },
+            {
+              "value": "SOIC-16",
+              "label": "SOIC-16"
+            },
+            {
+              "value": "TSSOP",
+              "label": "TSSOP"
+            },
+            {
+              "value": "QFN",
+              "label": "QFN"
+            },
+            {
+              "value": "QFP",
+              "label": "QFP"
+            },
+            {
+              "value": "DIP-8",
+              "label": "DIP-8"
+            },
+            {
+              "value": "DIP-14",
+              "label": "DIP-14"
+            },
+            {
+              "value": "DIP-16",
+              "label": "DIP-16"
+            },
+            {
+              "value": "TO-92",
+              "label": "TO-92"
+            },
+            {
+              "value": "TO-220",
+              "label": "TO-220"
+            },
+            {
+              "value": "through_hole",
+              "label": "through_hole"
+            },
+            {
+              "value": "other",
+              "label": "other"
+            }
+          ],
+          "filterable": true
+        }
+      ],
+      "log_types": [],
+      "children": [
+        {
+          "name": "Passives",
+          "fields": [],
+          "log_types": [],
+          "children": [
+            {
+              "name": "Resistors",
+              "sku_prefix": "RES",
+              "sku_pattern": "RES-{resistance|si}-{package}",
+              "fields": [
+                {
+                  "key": "resistance",
+                  "label": "Resistance",
+                  "type": "number",
+                  "number_unit": "Ω",
+                  "number_si_prefixes": true,
+                  "filterable": true,
+                  "required": true
+                },
+                {
+                  "key": "tolerance",
+                  "label": "Tolerance",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "0.1%",
+                      "label": "0.1%"
+                    },
+                    {
+                      "value": "0.5%",
+                      "label": "0.5%"
+                    },
+                    {
+                      "value": "1%",
+                      "label": "1%"
+                    },
+                    {
+                      "value": "2%",
+                      "label": "2%"
+                    },
+                    {
+                      "value": "5%",
+                      "label": "5%"
+                    },
+                    {
+                      "value": "10%",
+                      "label": "10%"
+                    }
+                  ],
+                  "filterable": true
+                },
+                {
+                  "key": "power_w",
+                  "label": "Power",
+                  "type": "number",
+                  "number_unit": "W",
+                  "number_si_prefixes": true,
+                  "filterable": true
+                }
+              ],
+              "log_types": [],
+              "children": []
+            },
+            {
+              "name": "Capacitors",
+              "sku_prefix": "CAP",
+              "sku_pattern": "CAP-{capacitance|si}-{voltage}V-{package}",
+              "fields": [
+                {
+                  "key": "capacitance",
+                  "label": "Capacitance",
+                  "type": "number",
+                  "number_unit": "F",
+                  "number_si_prefixes": true,
+                  "filterable": true,
+                  "required": true
+                },
+                {
+                  "key": "voltage",
+                  "label": "Voltage",
+                  "type": "number",
+                  "number_unit": "V",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "dielectric",
+                  "label": "Dielectric",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "C0G",
+                      "label": "C0G"
+                    },
+                    {
+                      "value": "X7R",
+                      "label": "X7R"
+                    },
+                    {
+                      "value": "X5R",
+                      "label": "X5R"
+                    },
+                    {
+                      "value": "Y5V",
+                      "label": "Y5V"
+                    },
+                    {
+                      "value": "electrolytic",
+                      "label": "electrolytic"
+                    },
+                    {
+                      "value": "tantalum",
+                      "label": "tantalum"
+                    },
+                    {
+                      "value": "film",
+                      "label": "film"
+                    },
+                    {
+                      "value": "other",
+                      "label": "other"
+                    }
+                  ],
+                  "filterable": true
+                }
+              ],
+              "log_types": [],
+              "children": []
+            },
+            {
+              "name": "Inductors",
+              "sku_prefix": "IND",
+              "sku_pattern": "IND-{inductance|si}-{package}",
+              "fields": [
+                {
+                  "key": "inductance",
+                  "label": "Inductance",
+                  "type": "number",
+                  "number_unit": "H",
+                  "number_si_prefixes": true,
+                  "filterable": true,
+                  "required": true
+                }
+              ],
+              "log_types": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Semiconductors",
+          "fields": [],
+          "log_types": [],
+          "children": [
+            {
+              "name": "Diodes",
+              "sku_prefix": "DIO",
+              "fields": [],
+              "log_types": [],
+              "children": []
+            },
+            {
+              "name": "Transistors",
+              "sku_prefix": "TRN",
+              "fields": [],
+              "log_types": [],
+              "children": []
+            },
+            {
+              "name": "ICs",
+              "sku_prefix": "IC",
+              "fields": [],
+              "log_types": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Modules",
+          "sku_prefix": "MOD",
+          "fields": [],
+          "log_types": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,387 @@
+{
+  "id": "computer",
+  "name": "Computer parts",
+  "description": "Unit-tracked RAM, CPUs, PCIe cards, drives and peripherals with test logs.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Computer",
+      "icon": "server",
+      "tracking_mode": "unit",
+      "fields": [],
+      "log_types": [],
+      "children": [
+        {
+          "name": "RAM",
+          "sku_prefix": "RAM",
+          "fields": [
+            {
+              "key": "gen",
+              "label": "Generation",
+              "type": "select",
+              "options": [
+                {
+                  "value": "DDR2",
+                  "label": "DDR2"
+                },
+                {
+                  "value": "DDR3",
+                  "label": "DDR3"
+                },
+                {
+                  "value": "DDR4",
+                  "label": "DDR4"
+                },
+                {
+                  "value": "DDR5",
+                  "label": "DDR5"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "capacity_gb",
+              "label": "Capacity",
+              "type": "number",
+              "number_unit": "GB",
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "speed_mts",
+              "label": "Speed",
+              "type": "number",
+              "number_unit": "MT/s",
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "form_factor",
+              "label": "Form factor",
+              "type": "select",
+              "options": [
+                {
+                  "value": "DIMM",
+                  "label": "DIMM"
+                },
+                {
+                  "value": "SO-DIMM",
+                  "label": "SO-DIMM"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "ecc",
+              "label": "ECC",
+              "type": "boolean",
+              "filterable": true
+            },
+            {
+              "key": "registered",
+              "label": "Registered",
+              "type": "boolean",
+              "filterable": true
+            },
+            {
+              "key": "mpn",
+              "label": "MPN",
+              "type": "text"
+            }
+          ],
+          "log_types": [
+            {
+              "key": "memtest",
+              "name": "Memtest",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "passes",
+                  "label": "Passes",
+                  "type": "number",
+                  "number_unit": null,
+                  "number_si_prefixes": false,
+                  "decimals": 0
+                },
+                {
+                  "key": "errors",
+                  "label": "Errors",
+                  "type": "number",
+                  "number_unit": null,
+                  "number_si_prefixes": false,
+                  "decimals": 0
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "passes",
+                "errors"
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "CPUs",
+          "sku_prefix": "CPU",
+          "fields": [
+            {
+              "key": "socket",
+              "label": "Socket",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "model",
+              "label": "Model",
+              "type": "text"
+            },
+            {
+              "key": "cores",
+              "label": "Cores",
+              "type": "number",
+              "number_unit": null,
+              "number_si_prefixes": false,
+              "decimals": 0
+            },
+            {
+              "key": "threads",
+              "label": "Threads",
+              "type": "number",
+              "number_unit": null,
+              "number_si_prefixes": false,
+              "decimals": 0
+            },
+            {
+              "key": "tdp_w",
+              "label": "TDP",
+              "type": "number",
+              "number_unit": "W",
+              "number_si_prefixes": false
+            }
+          ],
+          "log_types": [
+            {
+              "key": "bench_test",
+              "name": "Bench Test",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "board",
+                  "label": "Board",
+                  "type": "text"
+                },
+                {
+                  "key": "result",
+                  "label": "Result",
+                  "type": "text"
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "board",
+                "result"
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "PCIe Cards",
+          "sku_prefix": "PCIE",
+          "fields": [
+            {
+              "key": "card_type",
+              "label": "Card type",
+              "type": "select",
+              "options": [
+                {
+                  "value": "NIC",
+                  "label": "NIC"
+                },
+                {
+                  "value": "HBA-RAID",
+                  "label": "HBA-RAID"
+                },
+                {
+                  "value": "GPU",
+                  "label": "GPU"
+                },
+                {
+                  "value": "USB",
+                  "label": "USB"
+                },
+                {
+                  "value": "Serial-IO",
+                  "label": "Serial-IO"
+                },
+                {
+                  "value": "Other",
+                  "label": "Other"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "slot_width",
+              "label": "Slot width",
+              "type": "select",
+              "options": [
+                {
+                  "value": "x1",
+                  "label": "x1"
+                },
+                {
+                  "value": "x4",
+                  "label": "x4"
+                },
+                {
+                  "value": "x8",
+                  "label": "x8"
+                },
+                {
+                  "value": "x16",
+                  "label": "x16"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "chipset",
+              "label": "Chipset",
+              "type": "text"
+            }
+          ],
+          "log_types": [],
+          "children": []
+        },
+        {
+          "name": "Drives",
+          "sku_prefix": "DRV",
+          "fields": [
+            {
+              "key": "drive_type",
+              "label": "Drive type",
+              "type": "select",
+              "options": [
+                {
+                  "value": "HDD",
+                  "label": "HDD"
+                },
+                {
+                  "value": "SATA SSD",
+                  "label": "SATA SSD"
+                },
+                {
+                  "value": "NVMe",
+                  "label": "NVMe"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "capacity_gb",
+              "label": "Capacity",
+              "type": "number",
+              "number_unit": "GB",
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "interface",
+              "label": "Interface",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "form_factor",
+              "label": "Form factor",
+              "type": "text",
+              "filterable": true
+            }
+          ],
+          "log_types": [
+            {
+              "key": "health_check",
+              "name": "Health Check",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "power_on_hours",
+                  "label": "Power-on hours",
+                  "type": "number",
+                  "number_unit": "h",
+                  "number_si_prefixes": false,
+                  "decimals": 0
+                },
+                {
+                  "key": "reallocated_sectors",
+                  "label": "Reallocated sectors",
+                  "type": "number",
+                  "number_unit": null,
+                  "number_si_prefixes": false,
+                  "decimals": 0
+                },
+                {
+                  "key": "health_pct",
+                  "label": "Health",
+                  "type": "number",
+                  "number_unit": "%",
+                  "number_si_prefixes": false
+                },
+                {
+                  "key": "wiped",
+                  "label": "Wiped",
+                  "type": "boolean"
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "power_on_hours",
+                "health_pct"
+              ]
+            }
+          ],
+          "children": []
+        },
+        {
+          "name": "Peripherals",
+          "sku_prefix": "PERI",
+          "fields": [
+            {
+              "key": "device_type",
+              "label": "Device type",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "connection",
+              "label": "Connection",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "model",
+              "label": "Model",
+              "type": "text"
+            }
+          ],
+          "log_types": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pick2light.core.auth import read_session_token
+from pick2light.core.auth import SESSION_MAX_AGE_S, make_session_token, read_session_token
 from pick2light.core.settings import get_setting
 from pick2light.db import get_db
 from pick2light.models import AppUser
@@ -11,6 +11,17 @@ from pick2light.models import AppUser
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 SESSION_COOKIE = "p2l_session"
+
+
+def set_session_cookie(response: Response, secret_key: str, user_id: int) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        make_session_token(secret_key, user_id),
+        max_age=SESSION_MAX_AGE_S,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
 
 
 async def is_authenticated(request: Request, db: AsyncSession) -> bool:
