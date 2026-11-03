@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Computed,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -9,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
@@ -108,3 +112,15 @@ class StockMovement(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(16), default="ui")
     reverses_movement_id: Mapped[int | None] = mapped_column(ForeignKey("stock_movement.id"), unique=True)
     note: Mapped[str | None] = mapped_column(Text)
+
+
+class LogEntry(TimestampMixin, Base):
+    __tablename__ = "log_entry"
+    __table_args__ = (CheckConstraint("(unit_id IS NULL) <> (item_id IS NULL)", name="one_target"),)
+
+    log_entry_type_id: Mapped[int] = mapped_column(ForeignKey("log_entry_type.id"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
+    performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    values: Mapped[dict] = mapped_column(JSONB, default=dict)
+    notes: Mapped[str | None] = mapped_column(Text)
