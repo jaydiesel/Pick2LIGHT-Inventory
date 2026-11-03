@@ -3,8 +3,13 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Toast from 'primevue/toast'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import { apiFetch } from '../api/client'
+import { useScanner } from '../composables/useScanner'
+import { useScanStore } from '../stores/scan'
+import LocationPicker from './LocationPicker.vue'
+import ScanModeBar from './ScanModeBar.vue'
 import { useSession } from '../stores/session'
 import { useSettings } from '../stores/settings'
 
@@ -19,6 +24,25 @@ const HEALTH_INTERVAL_MS = 30_000
 const router = useRouter()
 const session = useSession()
 const settings = useSettings()
+const scan = useScanStore()
+const toast = useToast()
+
+scan.bind({
+  navigate: (path) => void router.push(path),
+  notify: (severity, message) => toast.add({ severity, summary: message, life: severity === 'error' ? 6000 : 3000 }),
+})
+
+// One app-wide scanner listener so a scan works on every page; settings are read lazily as they load.
+useScanner(
+  () => ({
+    minLength: Number(settings.get('scanner.min_length', 4)),
+    maxGapMs: Number(settings.get('scanner.max_gap_ms', 30)),
+    prefix: settings.get<string>('scanner.prefix', '') ?? '',
+    suffix: settings.get<string>('scanner.suffix', '') ?? '',
+    interceptInputs: settings.get<boolean>('scanner.intercept_inputs', true) !== false,
+  }),
+  (code) => void scan.submit(code),
+)
 
 const query = ref('')
 const drawerOpen = ref(false)
@@ -85,11 +109,18 @@ onUnmounted(() => {
       <Button class="menu-toggle" icon="pi pi-bars" text aria-label="Menu" @click="drawerOpen = !drawerOpen" />
       <strong class="brand">Pick2LIGHT</strong>
       <form class="search" role="search" @submit.prevent="search">
-        <InputText v-model="query" type="search" placeholder="Search items…" aria-label="Search" fluid />
+        <InputText v-model="query" type="search" data-scan-target placeholder="Search items…" aria-label="Search" fluid />
       </form>
-      <div class="scan-bar"><slot name="scan-bar" /></div>
+      <div class="scan-bar"><slot name="scan-bar"><ScanModeBar /></slot></div>
       <Button v-if="session.mode === 'password'" icon="pi pi-sign-out" text aria-label="Log out" @click="session.logout()" />
     </header>
+
+    <LocationPicker
+      v-if="scan.pendingLocationChoice"
+      :locations="scan.pendingLocationChoice.locations"
+      @select="scan.chooseLocation($event)"
+      @cancel="scan.cancelLocationChoice()"
+    />
 
     <div v-if="dbDown" class="banner banner-error" role="alert">
       Database unreachable. The server is retrying; changes cannot be saved right now.

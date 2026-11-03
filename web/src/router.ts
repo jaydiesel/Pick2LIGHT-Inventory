@@ -8,7 +8,7 @@ function page(path: string, title: string): RouteRecordRaw {
 }
 
 export const routes: RouteRecordRaw[] = [
-  page('/', 'Dashboard'),
+  { path: '/', component: () => import('./views/Dashboard.vue'), meta: { title: 'Dashboard' } },
   page('/search', 'Search'),
   page('/items/new', 'New item'),
   page('/items/:id', 'Item'),
