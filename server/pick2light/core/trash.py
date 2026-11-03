@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from pick2light.core import categories
 from pick2light.core.attachments import delete_attachment
 from pick2light.core.barcodes import register_barcode, remove_barcodes_for
+from pick2light.core.settings import get_setting
 from pick2light.errors import Conflict, NotFound
 from pick2light.models import (
     Attachment,
@@ -36,7 +37,6 @@ logger = logging.getLogger(__name__)
 TrashType = Literal["category", "log_entry_type", "item", "unit", "location"]
 TRASH_TYPES: tuple[str, ...] = get_args(TrashType)
 
-RETENTION_DAYS = 30  # Task 13 replaces this with the `trash.retention_days` setting
 PURGE_INTERVAL_SECONDS = 24 * 60 * 60
 
 
@@ -324,13 +324,17 @@ async def purge_loop(
     root: Path,
     *,
     interval: float = PURGE_INTERVAL_SECONDS,
-    retention_days: int = RETENTION_DAYS,
+    retention_days: int | None = None,
 ) -> None:
-    """Purge once now, then every ``interval`` seconds, until cancelled. Errors are logged."""
+    """Purge once now, then every ``interval`` seconds, until cancelled. Errors are logged.
+
+    Without ``retention_days`` each run reads the ``trash.retention_days`` setting.
+    """
     while True:
         try:
             async with factory() as db:
-                removed = await purge_expired(db, retention_days, root=root)
+                days = retention_days or await get_setting(db, "trash.retention_days")
+                removed = await purge_expired(db, days, root=root)
                 await db.commit()
             if removed:
                 logger.info("Trash purge removed %d rows", removed)

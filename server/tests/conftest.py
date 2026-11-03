@@ -21,6 +21,7 @@ os.environ.setdefault("P2L_DATA_DIR", tempfile.mkdtemp(prefix="p2l-test-data-"))
 
 from pick2light.app import create_app  # noqa: E402
 from pick2light.config import Settings  # noqa: E402
+from pick2light.core.settings import set_settings  # noqa: E402
 from pick2light.db import get_db, upgrade_database  # noqa: E402
 
 ADMIN_URL = os.environ.get(
@@ -123,7 +124,12 @@ def app(settings: Settings, db: AsyncSession) -> FastAPI:
 
 
 @pytest_asyncio.fixture
-async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+async def client(app: FastAPI, db: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
+    """Client for an app running with `auth.mode = none`, so API tests need no login.
+
+    Tests of password mode build their own client (see `auth_client` in test_auth.py).
+    """
+    await set_settings(db, {"auth.mode": "none"})
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

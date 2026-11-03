@@ -552,3 +552,27 @@ async def test_undo_after_location_purge_refused(db, tmp_path):
         text("SELECT quantity FROM stock WHERE location_id = :b"), {"b": b.id}
     )
     assert quantity == 5  # nothing was removed
+
+
+async def test_purge_loop_uses_retention_setting(committed_db, tmp_path, monkeypatch):
+    from pick2light.core.settings import set_settings
+
+    async with committed_db() as s:
+        await set_settings(s, {"trash.retention_days": 7})
+        await s.commit()
+    calls = []
+
+    async def record(db, retention_days, *, root):
+        calls.append(retention_days)
+        return 0
+
+    monkeypatch.setattr(trash, "purge_expired", record)
+    task = asyncio.create_task(trash.purge_loop(committed_db, tmp_path, interval=0.01))
+    for _ in range(100):
+        if calls:
+            break
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert set(calls) == {7}

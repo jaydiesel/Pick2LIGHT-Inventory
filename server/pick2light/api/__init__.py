@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from pick2light.api import (
     attachments,
+    auth,
     barcodes,
     categories,
     health,
@@ -11,22 +12,34 @@ from pick2light.api import (
     logs,
     purchase,
     search,
+    settings,
     stock,
     trash,
     units,
 )
+from pick2light.api.deps import RequireAuth
 
 api_router = APIRouter()
+# Open: health, auth and settings (which protects its own routes).
 api_router.include_router(health.router)
-api_router.include_router(categories.router)
-api_router.include_router(location_types.router)
-api_router.include_router(locations.router)
-api_router.include_router(barcodes.router)
-api_router.include_router(items.router)
-api_router.include_router(units.router)
-api_router.include_router(stock.router)
-api_router.include_router(logs.router)
-api_router.include_router(attachments.router)
-api_router.include_router(purchase.router)
-api_router.include_router(search.router)
-api_router.include_router(trash.router)
+api_router.include_router(auth.router)
+api_router.include_router(settings.router)
+
+# Everything else needs a login unless `auth.mode` is "none".
+protected = APIRouter(dependencies=[RequireAuth])
+for module in (
+    categories,
+    location_types,
+    locations,
+    barcodes,
+    items,
+    units,
+    stock,
+    logs,
+    attachments,
+    purchase,
+    search,
+    trash,
+):
+    protected.include_router(module.router)
+api_router.include_router(protected)
