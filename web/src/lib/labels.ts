@@ -3,8 +3,11 @@ import type { LabelTemplateOut } from '@/api/types'
 
 export type LabelTarget = 'item' | 'unit' | 'location'
 
+/** Templates for a target; the one named after the target ("Unit 30×15") comes first as the default. */
 export async function templatesFor(target: LabelTarget): Promise<LabelTemplateOut[]> {
-  return (await apiFetch<LabelTemplateOut[]>('/label-templates')).filter((t) => t.target === target)
+  const prefix = target[0].toUpperCase() + target.slice(1)
+  const list = (await apiFetch<LabelTemplateOut[]>('/label-templates')).filter((t) => t.target === target)
+  return [...list.filter((t) => t.name.startsWith(prefix)), ...list.filter((t) => !t.name.startsWith(prefix))]
 }
 
 /** Render labels to a PDF and open it in a new tab (print from the browser). */
