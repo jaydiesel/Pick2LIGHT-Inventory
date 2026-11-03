@@ -81,6 +81,7 @@ def app(settings, db: AsyncSession):
     application = create_app(settings)
 
     async def _get_db() -> AsyncIterator[AsyncSession]:
+        await db.commit()  # keep test setup; a failing request then rolls back only its own work
         try:
             yield db
             await db.commit()
@@ -93,7 +94,19 @@ def app(settings, db: AsyncSession):
 
 
 @pytest.fixture
-async def client(app) -> AsyncIterator[httpx.AsyncClient]:
+async def auth_client(app) -> AsyncIterator[httpx.AsyncClient]:
+    """Client with the default auth mode (password) — requests need a login."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+async def client(app, db: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
+    """Client with auth.mode = none so API tests don't need to log in."""
+    from pick2light.core.settings import set_settings
+
+    await set_settings(db, {"auth.mode": "none"})
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

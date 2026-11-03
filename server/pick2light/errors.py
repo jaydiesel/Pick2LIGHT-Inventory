@@ -17,6 +17,11 @@ class Conflict(AppError):
     code = "conflict"
 
 
+class Unauthenticated(AppError):
+    status_code = 401
+    code = "unauthenticated"
+
+
 class InvalidOperation(AppError):
     status_code = 400
     code = "invalid_operation"

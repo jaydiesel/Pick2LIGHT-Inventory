@@ -17,12 +17,14 @@ PURGE_INTERVAL_S = 24 * 3600
 
 async def _purge_loop(app: FastAPI) -> None:
     """Purge expired trash on start-up and then once a day."""
+    from pick2light.core.settings import get_setting
     from pick2light.core.trash import purge_expired
 
     while True:
         try:
             async with app.state.sessionmaker() as db:
-                count = await purge_expired(db, 30, root=app.state.settings.attachments_dir)
+                days = await get_setting(db, "trash.retention_days")
+                count = await purge_expired(db, days, root=app.state.settings.attachments_dir)
                 await db.commit()
                 if count:
                     log.info("Purged %d expired trash entries", count)
