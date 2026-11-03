@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pick2light.core.fields import FieldSpec
 from pick2light.errors import Conflict, NotFound, ValidationFailed
 from pick2light.models import Category, FieldDefinition, LocationType, LogEntryType
 
@@ -679,3 +680,8 @@ async def delete_location_type(db: AsyncSession, type_id: int) -> None:
     lt = await get_location_type(db, type_id)
     await db.delete(lt)
     await db.flush()
+
+
+async def effective_fields(db: AsyncSession, category_id: int, scope: str | None = None) -> list[FieldSpec]:
+    specs = [FieldSpec.from_definition(fd) for fd in await effective_field_defs(db, category_id)]
+    return [s for s in specs if scope is None or s.scope == scope]

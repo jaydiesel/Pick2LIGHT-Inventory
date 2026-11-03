@@ -108,3 +108,16 @@ async def test_log_type_inherited_and_summary_checked(db):
             db, cells.id, LogEntryTypeIn(key="other", name="Other", fields=[], summary_fields=["nope"])
         )
     assert "summary_fields" in e.value.fields
+
+
+async def test_effective_fields_returns_specs_filtered_by_scope(db):
+    from pick2light.core.categories import effective_fields
+
+    root = await make_category(
+        db, "Batteries", tracking_mode="unit", fields=[{"key": "brand", "type": "text"}]
+    )
+    cells = await make_category(
+        db, "Cells", parent=root, fields=[{"key": "wrap_color", "type": "text", "scope": "unit"}]
+    )
+    assert [s.key for s in await effective_fields(db, cells.id)] == ["brand", "wrap_color"]
+    assert [s.key for s in await effective_fields(db, cells.id, scope="unit")] == ["wrap_color"]
