@@ -506,3 +506,40 @@ async def test_api_units_and_low_stock(client, db):
     assert [(row["name"], row["on_hand"], row["min_stock"]) for row in r.json()] == [
         ("18650", 0, 3)
     ]
+
+
+@pytest.mark.parametrize("retire", [consume_unit, dispose_unit])
+async def test_undo_retire_of_checked_out_unit_restores_checked_out(db, retire):
+    _, loc, unit = await unit_setup(db)
+    await check_out_unit(db, unit.id)
+    gone = await retire(db, unit.id)
+    assert gone.quantity_delta == 0 and gone.from_location_id == loc.id
+    undo = await undo_movement(db, gone.id)
+    assert undo.quantity_delta == 0
+    fresh = await get_unit(db, unit.id)
+    assert (fresh.status, fresh.location_id) == ("checked_out", loc.id)
+
+
+@pytest.mark.parametrize("retire", [consume_unit, dispose_unit])
+async def test_undo_retire_of_in_stock_unit_restores_in_stock(db, retire):
+    item, loc, unit = await unit_setup(db)
+    gone = await retire(db, unit.id)
+    assert gone.quantity_delta == -1
+    undo = await undo_movement(db, gone.id)
+    assert undo.quantity_delta == 1
+    fresh = await get_unit(db, unit.id)
+    assert (fresh.status, fresh.location_id) == ("in_stock", loc.id)
+    assert await on_hand(db, item.id) == 1
+
+
+async def test_unit_movement_deltas_sum_to_in_stock_count(db):
+    _, _, unit = await unit_setup(db)
+
+    async def total() -> float:
+        return sum(m.quantity_delta for m in await list_movements(db, unit_id=unit.id))
+
+    assert await total() == 1
+    await check_out_unit(db, unit.id)
+    assert await total() == 0
+    await consume_unit(db, unit.id)
+    assert await total() == 0

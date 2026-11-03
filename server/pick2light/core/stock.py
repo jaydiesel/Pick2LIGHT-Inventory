@@ -388,6 +388,8 @@ async def _retire_unit(
     if unit.status not in ("in_stock", "checked_out"):
         raise _not_allowed(unit, "consume" if status == "consumed" else "dispose of")
     previous = unit.location_id
+    # A checked-out unit was already counted out by its check_out movement.
+    delta = -1 if unit.status == "in_stock" else 0
     unit.status = status
     unit.location_id = None
     await db.flush()
@@ -395,7 +397,7 @@ async def _retire_unit(
         db,
         item_id=unit.item_id,
         unit_id=unit.id,
-        delta=-1,
+        delta=delta,
         reason="consume",
         source=source,
         note=note,
@@ -513,9 +515,11 @@ async def _undo_unit(
             raise _not_allowed(unit, "undo the consumption of")
         if m.from_location_id is not None:
             unit.location_id = await _live_location(db, m.from_location_id)
-        unit.status = "in_stock"
+        # delta -1: it was in stock when retired; delta 0: it was checked out.
+        was_in_stock = m.quantity_delta != 0
+        unit.status = "in_stock" if was_in_stock else "checked_out"
         await db.flush()
-        return await record(1, to_id=unit.location_id)
+        return await record(1 if was_in_stock else 0, to_id=unit.location_id)
     if m.reason == "move":
         if unit.status != "in_stock":
             raise _not_allowed(unit, "undo the move of")
