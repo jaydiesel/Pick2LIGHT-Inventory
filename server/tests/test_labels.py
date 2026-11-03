@@ -393,3 +393,103 @@ async def test_category_default_template_must_exist(client):
     )
     assert r.status_code == 422
     assert "default_label_template_id" in r.json()["fields"]
+
+
+# ----------------------------------------------------------------------------- fix round 1
+
+
+def test_sheet_rejects_oversize_label():
+    t = tmpl([], 50, 30)  # 30 mm tall; letter cells are 25.4 mm
+    with pytest.raises(ValueError, match="larger"):
+        labels_pdf(_imgs(1), t, SHEETS["letter-3x10"])
+    # one pixel of slack is allowed
+    ok = tmpl([], 66.7, 25.4)
+    labels_pdf([Image.new("L", (533, 204), 255)], ok, SHEETS["letter-3x10"])
+
+
+def test_pdf_is_lossless_one_bit():
+    pdf = labels_pdf(_imgs(2), tmpl([]), None)
+    assert b"DCTDecode" not in pdf
+    sheet_pdf = labels_pdf(_imgs(1), tmpl([], 70, 37), SHEETS["a4-3x8"])
+    assert b"DCTDecode" not in sheet_pdf and b"CCITTFaxDecode" in sheet_pdf
+
+
+async def test_pdf_oversize_label_on_sheet_422(client, db):
+    cat = await make_category(db)
+    item = await make_item(db, cat)
+    tid = await _template_id(client, "Item 50×30")
+    r = await client.post(
+        f"{BASE}/labels/pdf",
+        json={
+            "template_id": tid,
+            "target_type": "item",
+            "ids": [item.id],
+            "sheet_id": "letter-3x10",
+        },
+    )
+    assert r.status_code == 422
+    msg = r.json()["fields"]["sheet_id"]
+    assert msg == "Label (50×30 mm) is larger than this sheet's cells (66.7×25.4 mm)"
+
+
+async def test_pdf_total_label_cap_422(client, db):
+    cat = await make_category(db)
+    item = await make_item(db, cat)
+    tid = await _template_id(client, "Item 50×30")
+    r = await client.post(
+        f"{BASE}/labels/pdf",
+        json={"template_id": tid, "target_type": "item", "ids": [item.id] * 11, "copies": 100},
+    )
+    assert r.status_code == 422
+    assert "copies" in r.json()["fields"]
+
+
+async def test_category_default_template_patch_and_unit_create(client):
+    cid = (await client.post(f"{BASE}/categories", json={"name": "P"})).json()["id"]
+    r = await client.patch(f"{BASE}/categories/{cid}", json={"default_label_template_id": 999999})
+    assert r.status_code == 422
+    r = await client.post(
+        f"{BASE}/categories", json={"name": "Q", "default_unit_label_template_id": 999999}
+    )
+    assert r.status_code == 422
+    assert "default_unit_label_template_id" in r.json()["fields"]
+
+
+async def test_category_default_template_target_checked(client):
+    item_t = await _template_id(client, "Item 50×30")
+    unit_t = await _template_id(client, "Unit 30×15")
+    r = await client.post(
+        f"{BASE}/categories", json={"name": "A", "default_label_template_id": unit_t}
+    )
+    assert r.status_code == 422
+    assert "default_label_template_id" in r.json()["fields"]
+    r = await client.post(
+        f"{BASE}/categories", json={"name": "B", "default_unit_label_template_id": item_t}
+    )
+    assert r.status_code == 422
+    r = await client.post(
+        f"{BASE}/categories",
+        json={
+            "name": "C",
+            "default_label_template_id": item_t,
+            "default_unit_label_template_id": unit_t,
+        },
+    )
+    assert r.status_code == 201
+
+
+async def test_committed_db_leaks_no_templates_a(committed_db):
+    async with committed_db() as s:
+        s.add(
+            LabelTemplate(name="leak", width_mm=10, height_mm=10, dpi=203, target="item", layout=[])
+        )
+        await s.commit()
+
+
+async def test_committed_db_leaks_no_templates_b(db):
+    rows = (await db.scalars(select(LabelTemplate).order_by(LabelTemplate.id))).all()
+    assert [r.id for r in rows] == [1, 2, 3, 4, 5]
+    t = LabelTemplate(name="n", width_mm=10, height_mm=10, dpi=203, target="item", layout=[])
+    db.add(t)
+    await db.flush()
+    assert t.id == 6

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pick2light.api.attachments import Root
 from pick2light.api.deps import DB
 from pick2light.errors import NotFound, ValidationFailed
-from pick2light.labels.pdf import SHEETS, SheetSpec, labels_pdf
+from pick2light.labels.pdf import SHEETS, SheetSpec, fit_error, labels_pdf
 from pick2light.labels.render import render_label
 from pick2light.labels.templates import (
     LAYOUT_ADAPTER,
@@ -28,7 +28,7 @@ TargetType = Literal["item", "unit", "location"]
 Target = Literal["item", "unit", "location", "command"]
 MAX_IDS = 500
 MAX_COPIES = 100
-MAX_LABELS = 5000  # ids x copies, so one request cannot build an enormous PDF
+MAX_LABELS = 1000  # ids x copies, so one request cannot build an enormous PDF
 
 
 class TemplateBase(BaseModel):
@@ -158,14 +158,35 @@ def _render(template: LabelTemplate, ctx: dict[str, Any]) -> Any:
         raise ValidationFailed({"template": str(exc)}) from None
 
 
+def _preview_png(template: LabelTemplate, ctx: dict[str, Any]) -> bytes:
+    buf = io.BytesIO()
+    _render(template, ctx).save(buf, "PNG", dpi=(template.dpi, template.dpi))
+    return buf.getvalue()
+
+
+def _build_pdf(
+    template: LabelTemplate,
+    contexts: list[dict[str, Any]],
+    copies: int,
+    sheet: SheetSpec | None,
+    start_position: int,
+) -> bytes:
+    images: list[Any] = []
+    for ctx in contexts:
+        images.extend([_render(template, ctx)] * copies)
+    try:
+        return labels_pdf(images, template, sheet, start_position)
+    except ValueError as exc:
+        raise ValidationFailed({"template": str(exc)}) from None
+
+
 @router.post("/labels/preview")
 async def preview(data: PreviewIn, db: DB, root: Root) -> Response:
     template = await _get(db, data.template_id)
     _check_target(template, data.target_type)
-    image = _render(template, await _context(db, data.target_type, data.id, root))
-    buf = io.BytesIO()
-    image.save(buf, "PNG", dpi=(template.dpi, template.dpi))
-    return Response(buf.getvalue(), media_type="image/png")
+    ctx = await _context(db, data.target_type, data.id, root)
+    png = await asyncio.to_thread(_preview_png, template, ctx)
+    return Response(png, media_type="image/png")
 
 
 @router.post("/labels/pdf")
@@ -181,17 +202,17 @@ async def pdf(data: PdfIn, db: DB, root: Root) -> Response:
             raise ValidationFailed(
                 {"start_position": f"Must be between 0 and {sheet.cells - 1} for this sheet"}
             )
+        problem = fit_error(template, sheet)
+        if problem:
+            raise ValidationFailed({"sheet_id": problem})
     if len(data.ids) * data.copies > MAX_LABELS:
         raise ValidationFailed({"copies": f"At most {MAX_LABELS} labels per request"})
 
-    images: list[Any] = []
-    rendered: dict[int, Any] = {}
-    for target_id in data.ids:
-        if target_id not in rendered:
-            ctx = await _context(db, data.target_type, target_id, root)
-            rendered[target_id] = _render(template, ctx)
-        images.extend([rendered[target_id]] * data.copies)
-    body = await asyncio.to_thread(labels_pdf, images, template, sheet, data.start_position)
+    # Database reads stay on the event loop; rendering and PDF building run in a thread.
+    contexts = [await _context(db, data.target_type, i, root) for i in data.ids]
+    body = await asyncio.to_thread(
+        _build_pdf, template, contexts, data.copies, sheet, data.start_position
+    )
     return Response(
         body,
         media_type="application/pdf",

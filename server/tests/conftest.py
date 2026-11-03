@@ -82,10 +82,15 @@ async def committed_db(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[
 
     Afterwards every app table is truncated and every sequence restarted, so later tests
     see the same empty database (and the same generated ids and codes) as before.
-    `alembic_version` and `label_template` (which migration 0010 seeds) are left alone.
+    `alembic_version` is left alone; `label_template` keeps the rows migration 0010 seeded
+    (ids up to the maximum present before the test) and its sequence is set back.
     """
+    async with engine.connect() as conn:
+        seeded_max = (await conn.execute(text("SELECT max(id) FROM label_template"))).scalar_one()
     yield async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
+        await conn.execute(text("DELETE FROM label_template WHERE id > :m"), {"m": seeded_max})
+        await conn.execute(text("SELECT setval('label_template_id_seq', :m)"), {"m": seeded_max})
         tables = (
             await conn.execute(
                 text(

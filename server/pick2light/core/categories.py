@@ -256,12 +256,20 @@ async def _items_exist(db: AsyncSession, category_ids: Sequence[int]) -> bool:
 
 
 async def _check_templates(db: AsyncSession, values: dict[str, Any]) -> None:
-    """Default label templates must exist (the columns are foreign keys)."""
+    """Default label templates must exist and fit: item template / unit template."""
     errors = {}
-    for name in ("default_label_template_id", "default_unit_label_template_id"):
+    for name, target in (
+        ("default_label_template_id", "item"),
+        ("default_unit_label_template_id", "unit"),
+    ):
         template_id = values.get(name)
-        if template_id is not None and await db.get(LabelTemplate, template_id) is None:
+        if template_id is None:
+            continue
+        template = await db.get(LabelTemplate, template_id)
+        if template is None:
             errors[name] = "Label template not found"
+        elif template.target != target:
+            errors[name] = f"Must be a {target} label template"
     if errors:
         raise ValidationFailed(errors)
 
