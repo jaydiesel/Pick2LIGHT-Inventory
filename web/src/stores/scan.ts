@@ -10,6 +10,9 @@ export type ToastSeverity = 'success' | 'info' | 'warn' | 'error'
 
 export interface PendingLocationChoice {
   code: string
+  /** Mode and quantity of the original scan; the resubmit must not pick up later changes. */
+  mode: ScanMode
+  quantity: number
   locations: NonNullable<ScanResult['locations']>
 }
 
@@ -30,6 +33,8 @@ export const useScanStore = defineStore('scan', () => {
 
   let handlers: ScanHandlers = { navigate: () => {}, notify: () => {} }
   let idleTimer: ReturnType<typeof setTimeout> | undefined
+  // Scans run one at a time so `recent` and the location prompt follow scan order.
+  let queue: Promise<unknown> = Promise.resolve()
 
   /** Wire the router/toast side effects; the store itself stays free of component context. */
   function bind(h: ScanHandlers) {
@@ -66,28 +71,29 @@ export const useScanStore = defineStore('scan', () => {
     unknown.value = unknown.value.filter((c) => c !== code)
   }
 
-  function announce(code: string, r: ScanResult) {
+  function announce(code: string, m: ScanMode, q: number, r: ScanResult) {
     if (r.action === 'needs_location') {
-      pendingLocationChoice.value = { code, locations: r.locations ?? [] }
+      pendingLocationChoice.value = { code, mode: m, quantity: q, locations: r.locations ?? [] }
     } else if (r.action === 'error') {
       handlers.notify('error', r.message)
     } else if (r.kind === 'unknown') {
       handlers.notify('warn', r.message)
       void loadUnknown().catch(() => {})
-    } else if (r.action === 'found' && mode.value === 'find' && path(r)) {
+    } else if (r.action === 'found' && m === 'find' && path(r)) {
       handlers.navigate(path(r)!)
     } else {
       handlers.notify(r.action === 'found' ? 'info' : 'success', r.message)
     }
   }
 
-  async function submit(code: string, extra: { location_id?: number } = {}): Promise<ScanResult | null> {
-    armIdle()
+  type SubmitExtra = { location_id?: number; mode?: ScanMode; quantity?: number }
+
+  async function run(code: string, m: ScanMode, q: number, locationId?: number): Promise<ScanResult | null> {
     let result: ScanResult
     try {
       result = await apiFetch<ScanResult>('/scan', {
         method: 'POST',
-        json: { code, mode: mode.value, quantity: quantity.value, ...extra },
+        json: { code, mode: m, quantity: q, ...(locationId === undefined ? {} : { location_id: locationId }) },
       })
     } catch (e) {
       handlers.notify('error', e instanceof Error ? e.message : 'Scan failed')
@@ -95,14 +101,24 @@ export const useScanStore = defineStore('scan', () => {
     }
     recent.value = [{ ...result, code }, ...recent.value].slice(0, RECENT_MAX)
     pendingLocationChoice.value = null
-    announce(code, result)
+    announce(code, m, q, result)
     return result
+  }
+
+  /** Queue a scan; mode and quantity are captured now, not when the request is eventually sent. */
+  function submit(code: string, extra: SubmitExtra = {}): Promise<ScanResult | null> {
+    armIdle()
+    const m = extra.mode ?? mode.value
+    const q = extra.quantity ?? quantity.value
+    const job = queue.then(() => run(code, m, q, extra.location_id))
+    queue = job.catch(() => {})
+    return job
   }
 
   async function chooseLocation(locationId: number) {
     const pending = pendingLocationChoice.value
     if (!pending) return
-    await submit(pending.code, { location_id: locationId })
+    await submit(pending.code, { location_id: locationId, mode: pending.mode, quantity: pending.quantity })
   }
 
   function cancelLocationChoice() {

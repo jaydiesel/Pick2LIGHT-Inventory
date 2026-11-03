@@ -32,14 +32,14 @@ describe('useScanner', () => {
   }
 
   /** Fire one keydown at `target`; returns the event so tests can check defaultPrevented. */
-  function press(key: string, target: EventTarget = document.body): KeyboardEvent {
-    const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+  function press(key: string, target: EventTarget = document.body, init: KeyboardEventInit = {}): KeyboardEvent {
+    const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init })
     target.dispatchEvent(ev)
     return ev
   }
 
   /** Type `text` (and optionally Enter) with `gap` ms between keys, appending to inputs like a real keyboard. */
-  function type(text: string, gap: number, opts: { enter?: boolean; target?: HTMLInputElement } = {}) {
+  function type(text: string, gap: number, opts: { enter?: boolean; enterGap?: number; target?: HTMLInputElement } = {}) {
     const target = opts.target ?? document.body
     let last: KeyboardEvent | undefined
     for (const ch of text) {
@@ -48,7 +48,7 @@ describe('useScanner', () => {
       if (opts.target) opts.target.value += ch
     }
     if (opts.enter ?? true) {
-      vi.advanceTimersByTime(gap)
+      vi.advanceTimersByTime(opts.enterGap ?? gap)
       last = press('Enter', target)
     }
     return last
@@ -60,6 +60,53 @@ describe('useScanner', () => {
     expect(onScan).toHaveBeenCalledTimes(1)
     expect(onScan).toHaveBeenCalledWith('ABC123')
     expect(enter?.defaultPrevented).toBe(true)
+  })
+
+  it('still detects a scan when the scanner pauses before Enter', () => {
+    setup()
+    const enter = type('ABC123', 5, { enterGap: 80 })
+    expect(onScan).toHaveBeenCalledWith('ABC123')
+    expect(enter?.defaultPrevented).toBe(true)
+  })
+
+  it('does not break a burst on Shift keydowns or AltGr characters', () => {
+    setup()
+    for (const ch of ['A', 'B']) {
+      vi.advanceTimersByTime(5)
+      press('Shift')
+      vi.advanceTimersByTime(5)
+      press(ch, document.body, { shiftKey: true })
+    }
+    vi.advanceTimersByTime(5)
+    press('@', document.body, { ctrlKey: true, altKey: true })
+    vi.advanceTimersByTime(5)
+    press('9')
+    vi.advanceTimersByTime(5)
+    press('Enter')
+    expect(onScan).toHaveBeenCalledWith('AB@9')
+  })
+
+  it('restores the caret position along with the value', () => {
+    setup()
+    const input = document.createElement('input')
+    input.value = 'abcd'
+    document.body.appendChild(input)
+    input.setSelectionRange(2, 2)
+    type('ZZ9999', 5, { target: input })
+    expect(input.value).toBe('abcd')
+    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 2])
+  })
+
+  it('does not touch non-text inputs', () => {
+    setup()
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    document.body.appendChild(input)
+    const onInput = vi.fn()
+    input.addEventListener('input', onInput)
+    type('ZZ9999', 5, { target: input })
+    expect(onScan).toHaveBeenCalledWith('ZZ9999')
+    expect(onInput).not.toHaveBeenCalled()
   })
 
   it('ignores slow human typing', () => {

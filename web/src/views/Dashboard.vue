@@ -129,11 +129,21 @@ async function attach(target: Candidate) {
   try {
     const body: BarcodeIn = { code, target_type: targetType.value, target_id: target.id, kind: kind.value }
     await apiFetch('/barcodes', { method: 'POST', json: body })
-    await scan.removeUnknown(code)
-    toast.add({ severity: 'success', summary: `Attached ${code} to ${target.label}`, life: 4000 })
-    attachCode.value = null
   } catch (e) {
     fail(e)
+    return
+  }
+  // The barcode exists now, so a failure to tidy the unknown list must not invite a retry.
+  attachCode.value = null
+  try {
+    await scan.removeUnknown(code)
+    toast.add({ severity: 'success', summary: `Attached ${code} to ${target.label}`, life: 4000 })
+  } catch {
+    toast.add({
+      severity: 'warn',
+      summary: `Attached ${code} to ${target.label}, but it could not be removed from the unknown list`,
+      life: 6000,
+    })
   }
 }
 

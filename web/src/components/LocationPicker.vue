@@ -20,6 +20,7 @@ interface Choice {
   id: number
   label: string
   detail?: string
+  depth: number
 }
 
 const tree = ref<LocationNode[]>([])
@@ -27,7 +28,7 @@ const loadError = ref('')
 
 function flatten(nodes: LocationNode[], depth = 0): Choice[] {
   return nodes.flatMap((n) => [
-    { id: n.id, label: `${' '.repeat(depth)}${n.name}`, detail: n.code },
+    { id: n.id, label: n.name, detail: n.code, depth },
     ...flatten(n.children, depth + 1),
   ])
 }
@@ -35,8 +36,8 @@ function flatten(nodes: LocationNode[], depth = 0): Choice[] {
 const fromScan = computed<Choice[]>(() =>
   (props.locations ?? []).map((l) =>
     'location_id' in l
-      ? { id: l.location_id, label: l.location_path.map((p) => p.name).join(' / '), detail: `qty ${l.quantity}` }
-      : { id: l.id, label: l.name, detail: l.code },
+      ? { id: l.location_id, label: l.location_path.map((p) => p.name).join(' / '), detail: `qty ${l.quantity}`, depth: 0 }
+      : { id: l.id, label: l.name, detail: l.code, depth: 0 },
   ),
 )
 const choices = computed(() => (fromScan.value.length ? fromScan.value : flatten(tree.value)))
@@ -56,7 +57,7 @@ onMounted(async () => {
     <p v-if="loadError" role="alert">{{ loadError }}</p>
     <ul class="choices">
       <li v-for="c in choices" :key="c.id">
-        <Button :label="c.label" :data-test="`loc-${c.id}`" text class="choice" @click="emit('select', c.id)">
+        <Button :label="c.label" :data-test="`loc-${c.id}`" text class="choice" :style="{ paddingLeft: `${0.75 + c.depth * 1.25}rem` }" @click="emit('select', c.id)">
           <template #default>
             <span class="name">{{ c.label }}</span>
             <small v-if="c.detail" class="muted">{{ c.detail }}</small>

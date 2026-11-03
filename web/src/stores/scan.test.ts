@@ -96,4 +96,34 @@ describe('scan store', () => {
     expect(store.recent).toHaveLength(20)
     expect(store.recent[0].code).toBe('C21')
   })
+
+  it('keeps scan order in recent when responses arrive out of order', async () => {
+    fetchMock.mockImplementation(async (_u: string, init: RequestInit) => {
+      const { code } = JSON.parse(init.body as string)
+      if (code === 'FIRST') await new Promise((r) => setTimeout(r, 50))
+      return json({ kind: 'item', action: 'found', item: { id: 1 }, message: code })
+    })
+    const store = bound()
+    const a = store.submit('FIRST')
+    const b = store.submit('SECOND')
+    await vi.advanceTimersByTimeAsync(100)
+    await Promise.all([a, b])
+    expect(store.recent.map((e) => e.code)).toEqual(['SECOND', 'FIRST'])
+  })
+
+  it('resubmits with the mode and quantity of the original scan', async () => {
+    fetchMock
+      .mockImplementationOnce(async () => json({ kind: 'item', action: 'needs_location', locations: [], message: 'pick' }))
+      .mockImplementationOnce(async () => json({ kind: 'item', action: 'checked_in', message: 'ok' }))
+    const store = bound()
+    store.mode = 'check_in'
+    store.quantity = 4
+    await store.submit('R1')
+    store.mode = 'find'
+    store.quantity = 1
+    await store.chooseLocation(9)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      code: 'R1', mode: 'check_in', quantity: 4, location_id: 9,
+    })
+  })
 })
