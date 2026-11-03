@@ -192,8 +192,9 @@ async def handle_scan(db: AsyncSession, req: ScanRequest, recent_unknown: deque[
     if barcode is None:
         trashed = await _trashed_target(db, code)
         if trashed is not None:
-            kind: Literal["item", "unit", "location"] = trashed  # type: ignore[assignment]
-            return ScanResult(kind=kind, action="error", message=f"This {trashed} is in the trash")
+            return ScanResult(
+                kind=_kind(trashed), action="error", message=f"This {trashed} is in the trash"
+            )
         if code in recent_unknown:
             recent_unknown.remove(code)
         recent_unknown.append(code)
@@ -237,9 +238,7 @@ async def handle_scan(db: AsyncSession, req: ScanRequest, recent_unknown: deque[
                 message=item.name,
             )
         return await _stock_scan(db, item, req)
-    except (InvalidOperation, ValidationFailed) as exc:
-        return ScanResult(kind=_kind(barcode.target_type), action="error", message=exc.message)
-    except NotFound as exc:
+    except (InvalidOperation, ValidationFailed, NotFound) as exc:
         return ScanResult(kind=_kind(barcode.target_type), action="error", message=exc.message)
 
 

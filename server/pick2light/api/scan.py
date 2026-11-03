@@ -18,7 +18,7 @@ async def recent_unknown(request: Request) -> list[str]:
     return list(reversed(request.app.state.recent_unknown))
 
 
-@router.delete("/unknown/{code}", status_code=204)
+@router.delete("/unknown/{code:path}", status_code=204)
 async def forget_unknown(code: str, request: Request) -> Response:
     codes = request.app.state.recent_unknown
     while code in codes:

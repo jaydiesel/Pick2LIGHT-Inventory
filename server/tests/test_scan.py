@@ -170,3 +170,20 @@ async def test_trashed_item_is_error(client, db):
     assert (body["kind"], body["action"]) == ("item", "error")
     assert "trash" in body["message"]
     assert (await client.get("/api/v1/scan/unknown")).json() == []
+
+
+async def test_delete_unknown_code_with_slash(client):
+    await scan(client, "A/B")
+    assert (await client.get("/api/v1/scan/unknown")).json() == ["A/B"]
+    assert (await client.delete("/api/v1/scan/unknown/A%2FB")).status_code == 204
+    assert (await client.get("/api/v1/scan/unknown")).json() == []
+
+
+async def test_unit_already_checked_out_is_error_without_movement(client, db):
+    item = await make_item(db, await make_category(db, "Boards", tracking_mode="unit"))
+    unit = await make_unit(db, item, location_id=(await make_location(db)).id)
+    await scan(client, unit.unit_code, mode="check_out")
+    before = len(await movements(db, item.id))
+    body = await scan(client, unit.unit_code, mode="check_out")
+    assert (body["kind"], body["action"]) == ("unit", "error")
+    assert len(await movements(db, item.id)) == before
