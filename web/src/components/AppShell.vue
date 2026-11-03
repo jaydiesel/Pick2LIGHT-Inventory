@@ -3,6 +3,8 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { apiFetch } from '@/api/client'
+import ScanHandler from '@/components/ScanHandler.vue'
+import ScanModeBar from '@/components/ScanModeBar.vue'
 import { useSession } from '@/stores/session'
 
 const router = useRouter()
@@ -66,7 +68,7 @@ onBeforeUnmount(() => clearInterval(timer))
           aria-label="Search"
         />
       </form>
-      <slot name="toolbar" />
+      <ScanModeBar />
       <button v-if="session.mode === 'password' && session.authenticated" class="p2l-btn" @click="logout">
         Log out
       </button>
@@ -78,6 +80,7 @@ onBeforeUnmount(() => clearInterval(timer))
       </RouterLink>
     </nav>
     <main class="main"><slot /></main>
+    <ScanHandler />
   </div>
 </template>
 
