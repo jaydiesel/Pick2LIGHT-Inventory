@@ -12,6 +12,7 @@ from pick2light.api import (
     purchase,
     search,
     stock,
+    trash,
     units,
 )
 
@@ -28,3 +29,4 @@ api_router.include_router(logs.router)
 api_router.include_router(attachments.router)
 api_router.include_router(purchase.router)
 api_router.include_router(search.router)
+api_router.include_router(trash.router)

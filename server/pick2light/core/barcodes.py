@@ -1,10 +1,10 @@
 """The barcode registry: one table behind every scan lookup."""
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.errors import Conflict, ValidationFailed
-from pick2light.models import Barcode
+from pick2light.models import Barcode, Item, Location, Unit
 
 # Kinds created and removed together with their owner; never edited through the barcode API.
 AUTOMATIC_KINDS = ("sku", "unit_code", "location_code")
@@ -32,14 +32,33 @@ async def register_barcode(
     return barcode
 
 
+def _target_in_trash() -> ColumnElement[bool]:
+    """True for a barcode whose item, unit or location is soft-deleted."""
+    return or_(
+        *(
+            and_(
+                Barcode.target_type == name,
+                exists().where(model.id == Barcode.target_id, model.deleted_at.is_not(None)),
+            )
+            for name, model in (("item", Item), ("unit", Unit), ("location", Location))
+        )
+    )
+
+
 async def lookup_barcode(db: AsyncSession, code: str) -> Barcode | None:
-    """Exact (case-sensitive) match, else the single case-insensitive match, else None."""
+    """Exact (case-sensitive) match, else the single case-insensitive match, else None.
+
+    Codes kept on a soft-deleted target (manufacturer, supplier, custom) are not found.
+    """
     code = code.strip()
-    exact = await db.scalar(select(Barcode).where(Barcode.code == code))
+    live = ~_target_in_trash()
+    exact = await db.scalar(select(Barcode).where(Barcode.code == code, live))
     if exact is not None:
         return exact
     matches = (
-        await db.scalars(select(Barcode).where(func.lower(Barcode.code) == code.lower()).limit(2))
+        await db.scalars(
+            select(Barcode).where(func.lower(Barcode.code) == code.lower(), live).limit(2)
+        )
     ).all()
     return matches[0] if len(matches) == 1 else None
 

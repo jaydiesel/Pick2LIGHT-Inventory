@@ -41,7 +41,7 @@ class LowStockRow(BaseModel):
 
 class MovementOut(BaseModel):
     id: int
-    item_id: int
+    item_id: int | None  # None once the item was purged from the trash
     unit_id: int | None
     from_location_id: int | None
     to_location_id: int | None
@@ -554,6 +554,8 @@ async def undo_movement(
     )
     if already is not None:
         raise Conflict("This movement has already been undone")
+    if m.item_id is None:
+        raise Conflict("The item of this movement was permanently deleted")
     if m.unit_id is not None:
         return await _undo_unit(db, m, source=source, note=note)
 

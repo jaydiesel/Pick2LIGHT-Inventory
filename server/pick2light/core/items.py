@@ -229,7 +229,7 @@ async def delete_item(db: AsyncSession, item_id: int) -> None:
     if active or await bulk_quantity(db, item_id) > 0:
         raise Conflict("Item still has stock; consume or remove it first")
     item.deleted_at = datetime.now(UTC)
-    await remove_barcodes_for(db, "item", item_id)
+    await remove_barcodes_for(db, "item", item_id, kind="sku")  # custom codes stay, hidden
     await db.flush()
 
 

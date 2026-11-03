@@ -1,11 +1,19 @@
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from pick2light import __version__
 from pick2light.api import api_router
 from pick2light.config import Settings, get_settings
+from pick2light.core import attachments, trash
+from pick2light.db import make_engine
 from pick2light.errors import AppError
 
 
@@ -43,6 +51,27 @@ async def _http_error(_: Request, exc: Exception) -> JSONResponse:
     return _error(exc.status_code, "invalid_operation", message)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Run the trash purge at start-up and daily; on shutdown finish pending file removals."""
+    settings: Settings = app.state.settings
+    engine = make_engine(settings.database_url)
+    purge = asyncio.create_task(
+        trash.purge_loop(
+            async_sessionmaker(engine, expire_on_commit=False),
+            Path(settings.data_dir) / "attachments",
+        )
+    )
+    try:
+        yield
+    finally:
+        purge.cancel()
+        with suppress(asyncio.CancelledError):
+            await purge
+        await attachments.finish_pending_unlinks()
+        await engine.dispose()
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Pick2LIGHT-Inventory",
@@ -50,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/docs",
         redoc_url=None,
         openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
     app.state.settings = settings or get_settings()
     app.add_exception_handler(AppError, _app_error)

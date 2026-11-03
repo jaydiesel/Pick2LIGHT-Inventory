@@ -42,7 +42,7 @@ class Attachment(TimestampMixin, Base):
 class PurchaseSource(TimestampMixin, Base):
     __tablename__ = "purchase_source"
 
-    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
     supplier: Mapped[str] = mapped_column(String(200))
     url: Mapped[str | None] = mapped_column(Text)
     supplier_part_number: Mapped[str | None] = mapped_column(String(200))

@@ -206,7 +206,7 @@ async def delete_location(db: AsyncSession, location_id: int) -> None:
     if has_stock is not None or has_units is not None:
         raise Conflict("Location still holds stock or units; move or consume them first")
     location.deleted_at = datetime.now(UTC)
-    await remove_barcodes_for(db, "location", location_id)
+    await remove_barcodes_for(db, "location", location_id, kind="location_code")
     await db.flush()
 
 

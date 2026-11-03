@@ -77,7 +77,9 @@ class Item(TimestampMixin, SoftDeleteMixin, Base):
         JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
     min_stock: Mapped[int | None] = mapped_column(Integer)
-    default_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    default_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("location.id", ondelete="SET NULL")
+    )
     photo_attachment_id: Mapped[int | None] = mapped_column(
         ForeignKey("attachment.id", ondelete="SET NULL")
     )
@@ -122,7 +124,9 @@ class Unit(TimestampMixin, SoftDeleteMixin, Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
     unit_code: Mapped[str] = mapped_column(String(200), unique=True)
     serial_number: Mapped[str | None] = mapped_column(String(200))
-    location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"), index=True)
+    location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("location.id", ondelete="SET NULL"), index=True
+    )
     condition: Mapped[str] = mapped_column(
         String(20), default="untested", server_default="untested"
     )
@@ -146,8 +150,10 @@ class Stock(TimestampMixin, Base):
         CheckConstraint("quantity >= 0", name="quantity"),
     )
 
-    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("location.id"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("location.id", ondelete="CASCADE"), index=True
+    )
     quantity: Mapped[Decimal] = mapped_column(
         Numeric(14, 3), default=Decimal(0), server_default="0"
     )
@@ -166,10 +172,19 @@ class StockMovement(TimestampMixin, Base):
         CheckConstraint("source IN ('ui', 'scan', 'import', 'api', 'stocktake')", name="source"),
     )
 
-    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
-    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id"), index=True)
-    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
-    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    # History survives the purge of what it refers to: these become NULL (migration 0008).
+    item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("item.id", ondelete="SET NULL"), index=True
+    )
+    unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("unit.id", ondelete="SET NULL"), index=True
+    )
+    from_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("location.id", ondelete="SET NULL")
+    )
+    to_location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("location.id", ondelete="SET NULL")
+    )
     quantity_delta: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     reason: Mapped[str] = mapped_column(String(20))
     source: Mapped[str] = mapped_column(String(20), default="ui", server_default="ui")

@@ -172,10 +172,23 @@ async def update_unit(db: AsyncSession, unit_id: int, patch: UnitPatch) -> Unit:
 
 
 async def delete_unit(db: AsyncSession, unit_id: int) -> None:
-    """Soft-delete in any status; the code stays reserved on the row but stops scanning."""
+    """Soft-delete in any status; the code stays reserved on the row but stops scanning.
+
+    Only the automatic codes (unit code and serial) are removed; other barcodes stay
+    attached but are hidden by `lookup_barcode` while the unit is in the trash.
+    """
     unit = await get_unit(db, unit_id)
     unit.deleted_at = datetime.now(UTC)
-    await remove_barcodes_for(db, "unit", unit_id)
+    await remove_barcodes_for(db, "unit", unit_id, kind="unit_code")
+    if unit.serial_number:
+        await db.execute(
+            delete(Barcode).where(
+                Barcode.code == unit.serial_number,
+                Barcode.target_type == "unit",
+                Barcode.target_id == unit_id,
+                Barcode.kind == "manufacturer",
+            )
+        )
     await db.flush()
 
 
