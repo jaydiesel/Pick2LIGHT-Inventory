@@ -82,7 +82,7 @@ async def committed_db(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[
 
     Afterwards every app table is truncated and every sequence restarted, so later tests
     see the same empty database (and the same generated ids and codes) as before.
-    `alembic_version` is left alone.
+    `alembic_version` and `label_template` (which migration 0010 seeds) are left alone.
     """
     yield async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -90,7 +90,8 @@ async def committed_db(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[
             await conn.execute(
                 text(
                     "SELECT quote_ident(tablename) FROM pg_tables "
-                    "WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
+                    "WHERE schemaname = 'public' "
+                    "AND tablename NOT IN ('alembic_version', 'label_template')"
                 )
             )
         ).scalars()
@@ -98,7 +99,8 @@ async def committed_db(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[
         sequences = (
             await conn.execute(
                 text(
-                    "SELECT quote_ident(sequencename) FROM pg_sequences WHERE schemaname = 'public'"
+                    "SELECT quote_ident(sequencename) FROM pg_sequences "
+                    "WHERE schemaname = 'public' AND sequencename <> 'label_template_id_seq'"
                 )
             )
         ).scalars()

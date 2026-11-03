@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.core.fields import FieldSpec
 from pick2light.errors import Conflict, NotFound, ValidationFailed
-from pick2light.models import Category, FieldDefinition, Item, LogEntryType
+from pick2light.models import Category, FieldDefinition, Item, LabelTemplate, LogEntryType
 
 KEY_PATTERN = r"^[a-z][a-z0-9_]{0,62}$"
 Key = Annotated[str, Field(pattern=KEY_PATTERN)]
@@ -255,9 +255,21 @@ async def _items_exist(db: AsyncSession, category_ids: Sequence[int]) -> bool:
     return found is not None
 
 
+async def _check_templates(db: AsyncSession, values: dict[str, Any]) -> None:
+    """Default label templates must exist (the columns are foreign keys)."""
+    errors = {}
+    for name in ("default_label_template_id", "default_unit_label_template_id"):
+        template_id = values.get(name)
+        if template_id is not None and await db.get(LabelTemplate, template_id) is None:
+            errors[name] = "Label template not found"
+    if errors:
+        raise ValidationFailed(errors)
+
+
 async def create_category(db: AsyncSession, data: CategoryIn) -> Category:
     if data.parent_id is not None:
         await get_category(db, data.parent_id)
+    await _check_templates(db, data.model_dump())
     category = Category(**data.model_dump())
     db.add(category)
     await db.flush()
@@ -269,6 +281,7 @@ async def update_category(db: AsyncSession, category_id: int, data: CategoryPatc
     changes = data.model_dump(exclude_unset=True)
     if "name" in changes and changes["name"] is None:
         raise ValidationFailed({"name": "required"})
+    await _check_templates(db, changes)
 
     moving = "parent_id" in changes and changes["parent_id"] != category.parent_id
     mode_changing = (

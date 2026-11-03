@@ -52,9 +52,12 @@ class Category(TimestampMixin, SoftDeleteMixin, Base):
     sku_prefix: Mapped[str | None] = mapped_column(String(50))
     sku_pattern: Mapped[str | None] = mapped_column(String(200))
     unit_id_pattern: Mapped[str | None] = mapped_column(String(200))
-    # Label templates arrive later; these become foreign keys then.
-    default_label_template_id: Mapped[int | None] = mapped_column(BigInteger)
-    default_unit_label_template_id: Mapped[int | None] = mapped_column(BigInteger)
+    default_label_template_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("label_template.id", ondelete="SET NULL")
+    )
+    default_unit_label_template_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("label_template.id", ondelete="SET NULL")
+    )
 
 
 class FieldDefinition(TimestampMixin, Base):
