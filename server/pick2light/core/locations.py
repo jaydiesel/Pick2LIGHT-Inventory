@@ -256,6 +256,10 @@ async def move_location(db: AsyncSession, location_id: int, new_parent_id: int |
 
 async def _contents_check(db: AsyncSession, location_id: int) -> None:
     """Refuse deleting a location that still holds stock or units."""
+    from pick2light.core.stock import location_has_contents
+
+    if await location_has_contents(db, location_id):
+        raise Conflict("This location still holds stock or units; move them first")
 
 
 async def delete_location(db: AsyncSession, location_id: int) -> None:

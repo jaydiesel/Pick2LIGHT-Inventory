@@ -77,7 +77,7 @@ async def _unique_code(db: AsyncSession, raw: str, exclude_unit: int | None = No
     return await ensure_unique_code(clean, exists)
 
 
-async def create_unit(db: AsyncSession, data: UnitIn) -> Unit:
+async def create_unit(db: AsyncSession, data: UnitIn, *, reason: str = "create", source: str = "ui") -> Unit:
     item = await get_item(db, data.item_id)
     if await cats.effective_tracking_mode(db, item.category_id) != "unit":
         raise InvalidOperation(f"'{item.name}' is tracked in bulk; add stock instead of units")
@@ -104,6 +104,17 @@ async def create_unit(db: AsyncSession, data: UnitIn) -> Unit:
     await register_barcode(db, code, "unit", unit.id, "unit_code")
     if unit.serial_number:
         await register_barcode(db, unit.serial_number, "unit", unit.id, "manufacturer")
+    from pick2light.core.stock import record_movement
+
+    await record_movement(
+        db,
+        item_id=item.id,
+        unit_id=unit.id,
+        reason=reason,
+        quantity_delta=1,
+        to_location_id=unit.location_id,
+        source=source,
+    )
     return unit
 
 

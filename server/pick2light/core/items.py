@@ -107,15 +107,9 @@ async def refresh_search_text(db: AsyncSession, item: Item) -> None:
 
 
 async def on_hand(db: AsyncSession, item: Item) -> float:
-    mode = await cats.effective_tracking_mode(db, item.category_id)
-    if mode == "unit":
-        count = await db.scalar(
-            select(func.count())
-            .select_from(Unit)
-            .where(Unit.item_id == item.id, Unit.status == "in_stock", Unit.deleted_at.is_(None))
-        )
-        return float(count or 0)
-    return 0.0
+    from pick2light.core.stock import on_hand as stock_on_hand
+
+    return await stock_on_hand(db, item.id)
 
 
 async def _has_active_stock(db: AsyncSession, item: Item) -> bool:

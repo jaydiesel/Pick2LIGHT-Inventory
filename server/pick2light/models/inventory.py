@@ -1,4 +1,16 @@
-from sqlalchemy import BigInteger, CheckConstraint, Computed, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Computed,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,3 +75,36 @@ class Unit(TimestampMixin, SoftDeleteMixin, Base):
     condition: Mapped[str] = mapped_column(String(16), default="untested")
     status: Mapped[str] = mapped_column(String(16), default="in_stock")
     attrs: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class Stock(TimestampMixin, Base):
+    __tablename__ = "stock"
+    __table_args__ = (
+        UniqueConstraint("item_id", "location_id", name="item_location"),
+        CheckConstraint("quantity >= 0", name="quantity_non_negative"),
+    )
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("location.id"), index=True)
+    quantity: Mapped[float] = mapped_column(Numeric(14, 4, asdecimal=False), default=0)
+
+
+class StockMovement(TimestampMixin, Base):
+    __tablename__ = "stock_movement"
+    __table_args__ = (
+        CheckConstraint(
+            "reason IN ('create','import','check_out','check_in','consume','move','adjust','stocktake','undo')",
+            name="reason",
+        ),
+        CheckConstraint("source IN ('ui','scan','import','api','stocktake')", name="source"),
+    )
+
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id"), index=True)
+    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    quantity_delta: Mapped[float] = mapped_column(Numeric(14, 4, asdecimal=False))
+    reason: Mapped[str] = mapped_column(String(16))
+    source: Mapped[str] = mapped_column(String(16), default="ui")
+    reverses_movement_id: Mapped[int | None] = mapped_column(ForeignKey("stock_movement.id"), unique=True)
+    note: Mapped[str | None] = mapped_column(Text)

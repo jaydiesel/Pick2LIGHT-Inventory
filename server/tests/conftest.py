@@ -97,3 +97,22 @@ async def client(app) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+async def committed_db(engine: AsyncEngine):
+    """A sessionmaker whose sessions really commit; all app tables are truncated afterwards."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    yield maker
+    async with engine.begin() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'"
+            )
+        )
+        tables = ", ".join(f'"{r[0]}"' for r in rows)
+        if tables:
+            await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
