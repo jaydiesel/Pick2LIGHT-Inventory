@@ -533,6 +533,9 @@ async def _undo_unit(
     raise Conflict(f"A {m.reason} movement cannot be undone")
 
 
+_PURGED = "This change refers to something that was permanently deleted and cannot be undone"
+
+
 async def undo_movement(
     db: AsyncSession, movement_id: int, *, source: str = "ui", note: str | None = None
 ) -> StockMovement:
@@ -555,11 +558,21 @@ async def undo_movement(
     if already is not None:
         raise Conflict("This movement has already been undone")
     if m.item_id is None:
-        raise Conflict("The item of this movement was permanently deleted")
+        raise Conflict(_PURGED)
     if m.unit_id is not None:
         return await _undo_unit(db, m, source=source, note=note)
+    item = await db.get(Item, m.item_id)  # may be in the trash; its category still decides
+    assert item is not None
+    if await effective_tracking_mode(db, item.category_id) == "unit":
+        raise Conflict(_PURGED)  # a unit movement whose unit was purged (unit_id is NULL)
 
     qty = m.quantity_delta
+    # After a purge NULL means "deleted", not "never set": a bulk movement needs the
+    # location(s) its shape implies, otherwise the inverse would be applied half-way.
+    if m.reason == "move" and (m.from_location_id is None or m.to_location_id is None):
+        raise Conflict(_PURGED)
+    if qty > 0 and m.to_location_id is None or qty < 0 and m.from_location_id is None:
+        raise Conflict(_PURGED)
     if m.from_location_id is not None and m.to_location_id is not None:
         return await _move(
             db,

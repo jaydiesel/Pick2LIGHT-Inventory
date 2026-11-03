@@ -515,3 +515,40 @@ async def test_undo_of_purged_item_movement_refused(db, tmp_path):
     await trash.purge_expired(db, 30, root=tmp_path)
     with pytest.raises(Conflict, match="permanently deleted"):
         await undo_movement(db, movement.id)
+
+
+async def test_undo_after_unit_purge_refused(db, tmp_path):
+    from pick2light.core.stock import move_unit, undo_movement
+
+    cells = await make_category(db, "Cells", tracking_mode="unit")
+    item = await make_item(db, cells, "18650")
+    a = await make_location(db, "A")
+    b = await make_location(db, "B")
+    unit = await make_unit(db, item, location_id=a.id)
+    movement = await move_unit(db, unit.id, b.id)
+    await delete_unit(db, unit.id)
+    await _age(db, Unit, unit.id)
+    await trash.purge_expired(db, 30, root=tmp_path)
+    with pytest.raises(Conflict, match="permanently deleted"):
+        await undo_movement(db, movement.id)
+    assert await db.scalar(select(func.count()).select_from(StockMovement)) == 2
+
+
+async def test_undo_after_location_purge_refused(db, tmp_path):
+    from pick2light.core.stock import move_stock, undo_movement
+
+    category = await make_category(db, "Misc")
+    a = await make_location(db, "A")
+    b = await make_location(db, "B")
+    item = await make_item(db, category, "Bulk")
+    await add_stock(db, item.id, a.id, 5)
+    movement = await move_stock(db, item.id, a.id, b.id, 5)
+    await delete_location(db, a.id)
+    await _age(db, Location, a.id)
+    await trash.purge_expired(db, 30, root=tmp_path)
+    with pytest.raises(Conflict, match="permanently deleted"):
+        await undo_movement(db, movement.id)
+    quantity = await db.scalar(
+        text("SELECT quantity FROM stock WHERE location_id = :b"), {"b": b.id}
+    )
+    assert quantity == 5  # nothing was removed
