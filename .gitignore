@@ -14,3 +14,4 @@ deploy/docker/data/
 deploy/docker/backups/
 test-results/
 playwright-report/
+web/openapi.json

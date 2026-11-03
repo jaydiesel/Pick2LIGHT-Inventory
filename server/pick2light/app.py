@@ -2,15 +2,16 @@ import asyncio
 import logging
 from collections import deque
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from pick2light import __version__
 from pick2light.config import Settings, get_settings
 from pick2light.db import make_engine, make_sessionmaker
-from pick2light.errors import AppError, ValidationFailed
+from pick2light.errors import AppError, NotFound, ValidationFailed
 
 log = logging.getLogger("pick2light")
 PURGE_INTERVAL_S = 24 * 3600
@@ -90,4 +91,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from pick2light.api import api_router
 
     app.include_router(api_router, prefix="/api/v1")
+    if settings.web_dist is not None and (settings.web_dist / "index.html").exists():
+        _mount_web(app, settings.web_dist)
     return app
+
+
+def _mount_web(app: FastAPI, dist: Path) -> None:
+    """Serve the built web app; unknown non-API paths get index.html so client-side routes work."""
+    root = dist.resolve()
+    index = root / "index.html"
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def _spa(path: str) -> FileResponse:
+        if path == "api" or path.startswith("api/"):
+            raise NotFound(f"No API route /{path}")
+        candidate = (root / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})

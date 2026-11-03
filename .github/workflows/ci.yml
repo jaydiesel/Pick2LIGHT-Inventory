@@ -32,3 +32,29 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy pick2light
       - run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y libdmtx0b
+      - run: npm ci
+      - name: Check generated API types are up to date
+        run: |
+          (cd ../server && uv sync --frozen)
+          npm run gen:api
+          git diff --exit-code src/api/schema.d.ts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run
+      - run: npx vite build
