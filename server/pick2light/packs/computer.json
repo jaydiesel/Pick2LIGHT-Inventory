@@ -1,0 +1,467 @@
+{
+  "id": "computer",
+  "name": "Computer parts",
+  "description": "RAM, CPUs, PCIe cards, drives and peripherals, each tracked per unit.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Computer",
+      "icon": "cpu",
+      "tracking_mode": "unit",
+      "children": [
+        {
+          "name": "RAM",
+          "sku_prefix": "RAM",
+          "sku_pattern": "RAM-{gen}-{capacity_gb}G-{form_factor}",
+          "fields": [
+            {
+              "key": "gen",
+              "label": "Generation",
+              "type": "select",
+              "options": [
+                {
+                  "value": "DDR2"
+                },
+                {
+                  "value": "DDR3"
+                },
+                {
+                  "value": "DDR4"
+                },
+                {
+                  "value": "DDR5"
+                }
+              ],
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "capacity_gb",
+              "label": "Capacity",
+              "type": "number",
+              "number_unit": "GB",
+              "number_si_prefixes": false,
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "speed_mts",
+              "label": "Speed",
+              "type": "number",
+              "number_unit": "MT/s",
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "form_factor",
+              "label": "Form factor",
+              "type": "select",
+              "options": [
+                {
+                  "value": "dimm",
+                  "label": "DIMM",
+                  "sku_code": "DIMM"
+                },
+                {
+                  "value": "sodimm",
+                  "label": "SO-DIMM",
+                  "sku_code": "SODIMM"
+                }
+              ],
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "ecc",
+              "label": "ECC",
+              "type": "boolean",
+              "filterable": true
+            },
+            {
+              "key": "registered",
+              "label": "Registered",
+              "type": "boolean",
+              "filterable": true
+            },
+            {
+              "key": "mpn",
+              "label": "Part number",
+              "type": "text",
+              "filterable": true
+            }
+          ],
+          "log_types": [
+            {
+              "key": "memtest",
+              "name": "Memtest",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "passes",
+                  "label": "Passes",
+                  "type": "number",
+                  "number_unit": null,
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "errors",
+                  "label": "Errors",
+                  "type": "number",
+                  "number_unit": null,
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "passes",
+                "errors"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "CPUs",
+          "sku_prefix": "CPU",
+          "sku_pattern": "CPU-{model}",
+          "fields": [
+            {
+              "key": "socket",
+              "label": "Socket",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "model",
+              "label": "Model",
+              "type": "text",
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "cores",
+              "label": "Cores",
+              "type": "number",
+              "number_unit": null,
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "threads",
+              "label": "Threads",
+              "type": "number",
+              "number_unit": null,
+              "number_si_prefixes": false,
+              "filterable": true
+            },
+            {
+              "key": "tdp_w",
+              "label": "TDP",
+              "type": "number",
+              "number_unit": "W",
+              "number_si_prefixes": false,
+              "filterable": true
+            }
+          ],
+          "log_types": [
+            {
+              "key": "bench_test",
+              "name": "Bench Test",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "board",
+                  "label": "Board tested in",
+                  "type": "text"
+                },
+                {
+                  "key": "result",
+                  "label": "Result",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "pass",
+                      "label": "Pass",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "fail",
+                      "label": "Fail",
+                      "sku_code": null
+                    }
+                  ],
+                  "filterable": true
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "result"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "PCIe Cards",
+          "sku_prefix": "PCIE",
+          "fields": [
+            {
+              "key": "card_type",
+              "label": "Card type",
+              "type": "select",
+              "options": [
+                {
+                  "value": "nic",
+                  "label": "NIC",
+                  "sku_code": null
+                },
+                {
+                  "value": "hba_raid",
+                  "label": "HBA / RAID",
+                  "sku_code": null
+                },
+                {
+                  "value": "gpu",
+                  "label": "GPU",
+                  "sku_code": null
+                },
+                {
+                  "value": "usb",
+                  "label": "USB",
+                  "sku_code": null
+                },
+                {
+                  "value": "serial_io",
+                  "label": "Serial / IO",
+                  "sku_code": null
+                },
+                {
+                  "value": "other",
+                  "label": "Other",
+                  "sku_code": null
+                }
+              ],
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "slot_width",
+              "label": "Slot width",
+              "type": "select",
+              "options": [
+                {
+                  "value": "x1"
+                },
+                {
+                  "value": "x4"
+                },
+                {
+                  "value": "x8"
+                },
+                {
+                  "value": "x16"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "chipset",
+              "label": "Chipset",
+              "type": "text",
+              "filterable": true
+            }
+          ]
+        },
+        {
+          "name": "Drives",
+          "sku_prefix": "DRV",
+          "sku_pattern": "DRV-{drive_type}-{capacity_gb}G",
+          "fields": [
+            {
+              "key": "drive_type",
+              "label": "Type",
+              "type": "select",
+              "options": [
+                {
+                  "value": "hdd",
+                  "label": "HDD",
+                  "sku_code": "HDD"
+                },
+                {
+                  "value": "sata_ssd",
+                  "label": "SATA SSD",
+                  "sku_code": "SSD"
+                },
+                {
+                  "value": "nvme",
+                  "label": "NVMe",
+                  "sku_code": "NVME"
+                }
+              ],
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "capacity_gb",
+              "label": "Capacity",
+              "type": "number",
+              "number_unit": "GB",
+              "number_si_prefixes": false,
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "interface",
+              "label": "Interface",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "form_factor",
+              "label": "Form factor",
+              "type": "select",
+              "options": [
+                {
+                  "value": "3_5",
+                  "label": "3.5\"",
+                  "sku_code": null
+                },
+                {
+                  "value": "2_5",
+                  "label": "2.5\"",
+                  "sku_code": null
+                },
+                {
+                  "value": "m2_2280",
+                  "label": "M.2 2280",
+                  "sku_code": null
+                },
+                {
+                  "value": "m2_2242",
+                  "label": "M.2 2242",
+                  "sku_code": null
+                },
+                {
+                  "value": "other",
+                  "label": "Other",
+                  "sku_code": null
+                }
+              ],
+              "filterable": true
+            }
+          ],
+          "log_types": [
+            {
+              "key": "health_check",
+              "name": "Health Check",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "power_on_hours",
+                  "label": "Power-on hours",
+                  "type": "number",
+                  "number_unit": "h",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "reallocated_sectors",
+                  "label": "Reallocated sectors",
+                  "type": "number",
+                  "number_unit": null,
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "health_pct",
+                  "label": "Health",
+                  "type": "number",
+                  "number_unit": "%",
+                  "number_si_prefixes": false,
+                  "filterable": true,
+                  "min": 0,
+                  "max": 100
+                },
+                {
+                  "key": "wiped",
+                  "label": "Wiped",
+                  "type": "boolean",
+                  "filterable": true
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "power_on_hours",
+                "health_pct"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Peripherals",
+          "sku_prefix": "PER",
+          "fields": [
+            {
+              "key": "device_type",
+              "label": "Device type",
+              "type": "text",
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "connection",
+              "label": "Connection",
+              "type": "select",
+              "options": [
+                {
+                  "value": "usb",
+                  "label": "USB",
+                  "sku_code": null
+                },
+                {
+                  "value": "ps2",
+                  "label": "PS/2",
+                  "sku_code": null
+                },
+                {
+                  "value": "bluetooth",
+                  "label": "Bluetooth",
+                  "sku_code": null
+                },
+                {
+                  "value": "wireless",
+                  "label": "2.4 GHz wireless",
+                  "sku_code": null
+                },
+                {
+                  "value": "other",
+                  "label": "Other",
+                  "sku_code": null
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "model",
+              "label": "Model",
+              "type": "text",
+              "filterable": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

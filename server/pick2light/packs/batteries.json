@@ -1,0 +1,164 @@
+{
+  "id": "batteries",
+  "name": "Batteries",
+  "description": "Individually tracked Li-ion cells with a Capacity Test history log.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Batteries",
+      "icon": "battery",
+      "children": [
+        {
+          "name": "Li-ion Cells",
+          "tracking_mode": "unit",
+          "sku_prefix": "CELL",
+          "sku_pattern": "CELL-{format}-{model}",
+          "unit_id_pattern": "C{seq:4}",
+          "fields": [
+            {
+              "key": "format",
+              "label": "Format",
+              "type": "select",
+              "options": [
+                {
+                  "value": "18650"
+                },
+                {
+                  "value": "21700"
+                },
+                {
+                  "value": "26650"
+                },
+                {
+                  "value": "32650"
+                },
+                {
+                  "value": "14500"
+                },
+                {
+                  "value": "other",
+                  "label": "Other",
+                  "sku_code": null
+                }
+              ],
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "brand",
+              "label": "Brand",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "model",
+              "label": "Model",
+              "type": "text",
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "rated_capacity",
+              "label": "Rated capacity",
+              "type": "number",
+              "number_unit": "mAh",
+              "number_si_prefixes": false,
+              "filterable": true,
+              "show_on_label": true
+            },
+            {
+              "key": "chemistry",
+              "label": "Chemistry",
+              "type": "select",
+              "options": [
+                {
+                  "value": "NMC"
+                },
+                {
+                  "value": "LFP"
+                },
+                {
+                  "value": "LCO"
+                },
+                {
+                  "value": "NCA"
+                },
+                {
+                  "value": "LTO"
+                }
+              ],
+              "filterable": true
+            },
+            {
+              "key": "datasheet",
+              "label": "Datasheet",
+              "type": "url"
+            },
+            {
+              "key": "wrap_color",
+              "label": "Wrap colour",
+              "type": "text",
+              "scope": "unit",
+              "filterable": true
+            },
+            {
+              "key": "source",
+              "label": "Source (pack, seller…)",
+              "type": "text",
+              "scope": "unit"
+            }
+          ],
+          "log_types": [
+            {
+              "key": "capacity_test",
+              "name": "Capacity Test",
+              "applies_to": "unit",
+              "fields": [
+                {
+                  "key": "capacity_mah",
+                  "label": "Capacity",
+                  "type": "number",
+                  "number_unit": "mAh",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "ir_mohm",
+                  "label": "Internal resistance",
+                  "type": "number",
+                  "number_unit": "mΩ",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "storage_v",
+                  "label": "Storage voltage",
+                  "type": "number",
+                  "number_unit": "V",
+                  "number_si_prefixes": false,
+                  "filterable": true,
+                  "decimals": 2
+                },
+                {
+                  "key": "tester",
+                  "label": "Tester / charger",
+                  "type": "text"
+                },
+                {
+                  "key": "notes",
+                  "label": "Notes",
+                  "type": "long_text"
+                }
+              ],
+              "summary_fields": [
+                "capacity_mah",
+                "ir_mohm",
+                "storage_v"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

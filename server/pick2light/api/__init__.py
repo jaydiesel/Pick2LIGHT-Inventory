@@ -13,13 +13,14 @@ from pick2light.api import (
     purchase,
     search,
     settings,
+    setup,
     stock,
     trash,
     units,
 )
 from pick2light.api.deps import require_auth
 
-PUBLIC = [health.router, auth.router, settings.public_router]
+PUBLIC = [health.router, auth.router, settings.public_router, setup.public_router]
 PROTECTED = [
     settings.router,
     categories.router,
@@ -34,6 +35,7 @@ PROTECTED = [
     purchase.router,
     search.router,
     trash.router,
+    setup.router,
 ]
 
 api_router = APIRouter()

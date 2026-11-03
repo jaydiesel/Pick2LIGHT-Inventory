@@ -1,0 +1,12 @@
+{
+  "id": "generic",
+  "name": "Generic",
+  "description": "A single General category with no extra fields.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "General",
+      "icon": "box"
+    }
+  ]
+}

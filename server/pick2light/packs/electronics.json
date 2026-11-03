@@ -1,0 +1,404 @@
+{
+  "id": "electronics",
+  "name": "Electronics",
+  "description": "Resistors, capacitors, inductors, semiconductors, ICs and modules with SI-value fields.",
+  "location_types": [],
+  "categories": [
+    {
+      "name": "Electronics",
+      "icon": "chip",
+      "sku_prefix": "EL",
+      "fields": [
+        {
+          "key": "mpn",
+          "label": "Manufacturer part number",
+          "type": "text"
+        },
+        {
+          "key": "package",
+          "label": "Package",
+          "type": "select",
+          "options": [
+            {
+              "value": "0201"
+            },
+            {
+              "value": "0402"
+            },
+            {
+              "value": "0603"
+            },
+            {
+              "value": "0805"
+            },
+            {
+              "value": "1206"
+            },
+            {
+              "value": "1210"
+            },
+            {
+              "value": "2512"
+            },
+            {
+              "value": "SOT-23"
+            },
+            {
+              "value": "SOT-223"
+            },
+            {
+              "value": "SOD-123"
+            },
+            {
+              "value": "SOIC-8"
+            },
+            {
+              "value": "SOIC-16"
+            },
+            {
+              "value": "TSSOP"
+            },
+            {
+              "value": "QFN"
+            },
+            {
+              "value": "QFP"
+            },
+            {
+              "value": "DIP-8"
+            },
+            {
+              "value": "DIP-14"
+            },
+            {
+              "value": "DIP-16"
+            },
+            {
+              "value": "TO-92"
+            },
+            {
+              "value": "TO-220"
+            },
+            {
+              "value": "TO-247"
+            },
+            {
+              "value": "axial",
+              "label": "Through-hole axial",
+              "sku_code": null
+            },
+            {
+              "value": "radial",
+              "label": "Through-hole radial",
+              "sku_code": null
+            },
+            {
+              "value": "other",
+              "label": "Other",
+              "sku_code": null
+            }
+          ],
+          "filterable": true
+        },
+        {
+          "key": "datasheet",
+          "label": "Datasheet",
+          "type": "url"
+        }
+      ],
+      "children": [
+        {
+          "name": "Passives",
+          "icon": "resistor",
+          "children": [
+            {
+              "name": "Resistors",
+              "sku_prefix": "RES",
+              "sku_pattern": "RES-{resistance|si}-{package}",
+              "fields": [
+                {
+                  "key": "resistance",
+                  "label": "Resistance",
+                  "type": "number",
+                  "number_unit": "Ω",
+                  "number_si_prefixes": true,
+                  "filterable": true,
+                  "show_on_label": true
+                },
+                {
+                  "key": "tolerance",
+                  "label": "Tolerance",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "0.1%"
+                    },
+                    {
+                      "value": "0.5%"
+                    },
+                    {
+                      "value": "1%"
+                    },
+                    {
+                      "value": "2%"
+                    },
+                    {
+                      "value": "5%"
+                    },
+                    {
+                      "value": "10%"
+                    },
+                    {
+                      "value": "20%"
+                    }
+                  ],
+                  "filterable": true
+                },
+                {
+                  "key": "power_w",
+                  "label": "Power",
+                  "type": "number",
+                  "number_unit": "W",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                }
+              ]
+            },
+            {
+              "name": "Capacitors",
+              "sku_prefix": "CAP",
+              "sku_pattern": "CAP-{capacitance|si}-{voltage}V-{package}",
+              "fields": [
+                {
+                  "key": "capacitance",
+                  "label": "Capacitance",
+                  "type": "number",
+                  "number_unit": "F",
+                  "number_si_prefixes": true,
+                  "filterable": true,
+                  "show_on_label": true
+                },
+                {
+                  "key": "voltage",
+                  "label": "Voltage rating",
+                  "type": "number",
+                  "number_unit": "V",
+                  "number_si_prefixes": false,
+                  "filterable": true,
+                  "show_on_label": true
+                },
+                {
+                  "key": "dielectric",
+                  "label": "Dielectric / type",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "C0G"
+                    },
+                    {
+                      "value": "X5R"
+                    },
+                    {
+                      "value": "X7R"
+                    },
+                    {
+                      "value": "Y5V"
+                    },
+                    {
+                      "value": "electrolytic",
+                      "label": "Electrolytic",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "tantalum",
+                      "label": "Tantalum",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "film",
+                      "label": "Film",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "other",
+                      "label": "Other",
+                      "sku_code": null
+                    }
+                  ],
+                  "filterable": true
+                }
+              ]
+            },
+            {
+              "name": "Inductors",
+              "sku_prefix": "IND",
+              "sku_pattern": "IND-{inductance|si}-{package}",
+              "fields": [
+                {
+                  "key": "inductance",
+                  "label": "Inductance",
+                  "type": "number",
+                  "number_unit": "H",
+                  "number_si_prefixes": true,
+                  "filterable": true,
+                  "show_on_label": true
+                },
+                {
+                  "key": "current_a",
+                  "label": "Current rating",
+                  "type": "number",
+                  "number_unit": "A",
+                  "number_si_prefixes": true,
+                  "filterable": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Semiconductors",
+          "children": [
+            {
+              "name": "Diodes",
+              "sku_prefix": "DIO",
+              "fields": [
+                {
+                  "key": "diode_type",
+                  "label": "Diode type",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "rectifier",
+                      "label": "Rectifier",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "schottky",
+                      "label": "Schottky",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "zener",
+                      "label": "Zener",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "led",
+                      "label": "LED",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "tvs",
+                      "label": "TVS",
+                      "sku_code": null
+                    }
+                  ],
+                  "filterable": true
+                },
+                {
+                  "key": "forward_current_a",
+                  "label": "Forward current",
+                  "type": "number",
+                  "number_unit": "A",
+                  "number_si_prefixes": true,
+                  "filterable": true
+                },
+                {
+                  "key": "reverse_voltage",
+                  "label": "Reverse voltage",
+                  "type": "number",
+                  "number_unit": "V",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                }
+              ]
+            },
+            {
+              "name": "Transistors",
+              "sku_prefix": "TRN",
+              "fields": [
+                {
+                  "key": "transistor_type",
+                  "label": "Transistor type",
+                  "type": "select",
+                  "options": [
+                    {
+                      "value": "NPN"
+                    },
+                    {
+                      "value": "PNP"
+                    },
+                    {
+                      "value": "nmos",
+                      "label": "N-channel MOSFET",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "pmos",
+                      "label": "P-channel MOSFET",
+                      "sku_code": null
+                    },
+                    {
+                      "value": "igbt",
+                      "label": "IGBT",
+                      "sku_code": null
+                    }
+                  ],
+                  "filterable": true
+                },
+                {
+                  "key": "vds_v",
+                  "label": "Max voltage",
+                  "type": "number",
+                  "number_unit": "V",
+                  "number_si_prefixes": false,
+                  "filterable": true
+                },
+                {
+                  "key": "id_a",
+                  "label": "Max current",
+                  "type": "number",
+                  "number_unit": "A",
+                  "number_si_prefixes": true,
+                  "filterable": true
+                }
+              ]
+            },
+            {
+              "name": "ICs",
+              "sku_prefix": "IC",
+              "fields": [
+                {
+                  "key": "function",
+                  "label": "Function",
+                  "type": "text",
+                  "filterable": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Modules",
+          "sku_prefix": "MOD",
+          "fields": [
+            {
+              "key": "interface",
+              "label": "Interface",
+              "type": "text",
+              "filterable": true
+            },
+            {
+              "key": "supply_v",
+              "label": "Supply voltage",
+              "type": "number",
+              "number_unit": "V",
+              "number_si_prefixes": false,
+              "filterable": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
