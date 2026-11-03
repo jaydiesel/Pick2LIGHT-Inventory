@@ -129,22 +129,32 @@ async def test_duplicate_upload_shares_file(db, settings):
     assert a.storage_path == f"{a.sha256[:2]}/{a.sha256}"
 
 
-async def test_delete_keeps_shared_file(db, settings):
-    item_id = await _item_id(db)
+async def test_delete_keeps_shared_file(committed_db, settings):
     root = settings.data_dir / "attachments"
-    kw = dict(
-        owner_type="item", owner_id=item_id, kind="photo", content_type="image/png", root=root
-    )
-    a = await save_upload(db, filename="a.png", stream=_chunks(PNG), **kw)
-    b = await save_upload(db, filename="b.png", stream=_chunks(PNG), **kw)
-    path = attachment_path(a, root=root)
-    await delete_attachment(db, a.id, root=root)
-    assert path.exists()
-    await delete_attachment(db, b.id, root=root)
-    assert not path.exists()
-    assert await list_attachments(db, "item", item_id) == []
-    with pytest.raises(NotFound):
-        await delete_attachment(db, b.id, root=root)
+    item_id, a_id = await _committed_attachment(committed_db, root, "a.png")
+    async with committed_db() as s:
+        b = await save_upload(
+            s,
+            owner_type="item",
+            owner_id=item_id,
+            kind="photo",
+            filename="b.png",
+            content_type="image/png",
+            stream=_chunks(PNG),
+            root=root,
+        )
+        b_id = b.id
+        await s.commit()
+    for gone_id, expect_file in [(a_id, True), (b_id, False)]:
+        async with committed_db() as s:
+            await delete_attachment(s, gone_id, root=root)
+            await s.commit()
+        await svc.finish_pending_unlinks()
+        assert _blob(root).exists() is expect_file
+    async with committed_db() as s:
+        assert await list_attachments(s, "item", item_id) == []
+        with pytest.raises(NotFound):
+            await delete_attachment(s, b_id, root=root)
 
 
 async def test_deleting_photo_attachment_clears_item_reference(db, settings):
@@ -282,3 +292,93 @@ async def test_soft_deleted_owner_not_found(db):
     await delete_item(db, item.id)
     with pytest.raises(NotFound):
         await add_link(db, owner_type="item", owner_id=item.id, kind="other", url="http://x.org/a")
+
+
+# --- deletion is deferred to commit and coordinated with dedupe -------------------------
+
+
+async def _committed_attachment(maker, root: Path, filename: str = "a.png") -> tuple[int, int]:
+    """Commit an item and one stored attachment; return (item id, attachment id)."""
+    async with maker() as s:
+        item = await make_item(s, await make_category(s))
+        att = await save_upload(
+            s,
+            owner_type="item",
+            owner_id=item.id,
+            kind="photo",
+            filename=filename,
+            content_type="image/png",
+            stream=_chunks(PNG),
+            root=root,
+        )
+        await s.commit()
+        return item.id, att.id
+
+
+def _blob(root: Path) -> Path:
+    sha = hashlib.sha256(PNG).hexdigest()
+    return root / sha[:2] / sha
+
+
+async def test_delete_rolled_back_keeps_file_and_row(committed_db, settings):
+    root = settings.data_dir / "attachments"
+    _, att_id = await _committed_attachment(committed_db, root)
+    async with committed_db() as s:
+        await delete_attachment(s, att_id, root=root)
+        assert _blob(root).exists()
+        await s.rollback()
+    await svc.finish_pending_unlinks()
+    assert _blob(root).exists()
+    async with committed_db() as s:
+        assert (await svc.get_attachment(s, att_id)).id == att_id
+
+
+async def test_file_removed_only_after_commit(committed_db, settings):
+    root = settings.data_dir / "attachments"
+    _, att_id = await _committed_attachment(committed_db, root)
+    async with committed_db() as s:
+        await delete_attachment(s, att_id, root=root)
+        await s.flush()
+        await svc.finish_pending_unlinks()
+        assert _blob(root).exists()
+        await s.commit()
+    await svc.finish_pending_unlinks()
+    assert not _blob(root).exists()
+
+
+async def test_concurrent_upload_and_delete_of_same_content(committed_db, settings):
+    import asyncio
+
+    root = settings.data_dir / "attachments"
+    item_id, att_id = await _committed_attachment(committed_db, root)
+
+    deleter = committed_db()
+    await delete_attachment(deleter, att_id, root=root)  # uncommitted; holds the content lock
+
+    async def upload_b() -> int:
+        async with committed_db() as s:
+            att = await save_upload(
+                s,
+                owner_type="item",
+                owner_id=item_id,
+                kind="photo",
+                filename="b.png",
+                content_type="image/png",
+                stream=_chunks(PNG),
+                root=root,
+            )
+            await s.commit()
+            return att.id
+
+    upload = asyncio.create_task(upload_b())
+    await asyncio.sleep(0.3)
+    assert not upload.done()  # waiting for the deleter
+    await deleter.commit()
+    await deleter.close()
+    b_id = await asyncio.wait_for(upload, 5)
+    await svc.finish_pending_unlinks()
+
+    assert _blob(root).exists()
+    async with committed_db() as s:
+        b = await svc.get_attachment(s, b_id)
+        assert attachment_path(b, root=root).exists()

@@ -16,8 +16,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event, func, select
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from pick2light.core.categories import get_category
 from pick2light.core.items import get_item
@@ -135,6 +135,9 @@ async def save_upload(
                 digest.update(chunk)
                 await asyncio.to_thread(out.write, chunk)
         sha = digest.hexdigest()
+        # Held until this transaction ends: a concurrent delete of the same content then
+        # waits, and sees our row, before deciding whether the file is still needed.
+        await _lock_content(db, sha)
         rel = f"{sha[:2]}/{sha}"
         dest = root / rel
         await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
@@ -205,17 +208,94 @@ async def list_attachments(db: AsyncSession, owner_type: str, owner_id: int) -> 
     return list(result)
 
 
+def _lock_key(sha: str) -> object:
+    return func.hashtextextended(sha, 0)
+
+
+async def _lock_content(db: AsyncSession, sha: str) -> None:
+    """Transaction-scoped lock serialising uploads and deletes of identical content."""
+    await db.execute(select(func.pg_advisory_xact_lock(_lock_key(sha))))
+
+
+_cleanup_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _unlink_if_unreferenced(
+    bind: AsyncEngine | AsyncConnection, sha: str, path: Path
+) -> None:
+    """Remove the file unless a committed row still uses it.
+
+    Runs after the deleting transaction committed, under the same content lock the
+    uploads take, so an upload that reused the file is either already committed (seen
+    here) or waits until the file is gone and writes it afresh.
+    """
+    engine = bind if isinstance(bind, AsyncEngine) else None
+    conn_cm = engine.connect() if engine else None
+    conn = await conn_cm.__aenter__() if conn_cm else bind
+    assert isinstance(conn, AsyncConnection)
+    try:
+        await conn.execute(select(func.pg_advisory_lock(_lock_key(sha))))
+        try:
+            count = await conn.scalar(
+                select(func.count()).select_from(Attachment).where(Attachment.sha256 == sha)
+            )
+            if not count:
+                await asyncio.to_thread(path.unlink, missing_ok=True)
+        finally:
+            await conn.execute(select(func.pg_advisory_unlock(_lock_key(sha))))
+            await conn.commit()
+    finally:
+        if conn_cm:
+            await conn_cm.__aexit__(None, None, None)
+
+
+def _schedule_unlinks(session: object) -> None:
+    from sqlalchemy.orm import Session
+
+    assert isinstance(session, Session)
+    pending: list[tuple[AsyncEngine | AsyncConnection, str, Path]] = session.info.pop(
+        "pending_unlinks", []
+    )
+    for bind, sha, path in pending:
+        task = asyncio.get_running_loop().create_task(_unlink_if_unreferenced(bind, sha, path))
+        _cleanup_tasks.add(task)
+        task.add_done_callback(_cleanup_tasks.discard)
+
+
+def _drop_unlinks(session: object, *_: object) -> None:
+    from sqlalchemy.orm import Session
+
+    assert isinstance(session, Session)
+    session.info.pop("pending_unlinks", None)
+
+
+async def finish_pending_unlinks() -> None:
+    """Wait for file cleanups started by committed deletes (used by tests and shutdown)."""
+    while _cleanup_tasks:
+        await asyncio.gather(*list(_cleanup_tasks), return_exceptions=True)
+
+
+def _defer_unlink(db: AsyncSession, sha: str, path: Path) -> None:
+    info = db.sync_session.info
+    if not info.get("unlink_hooks"):
+        event.listen(db.sync_session, "after_commit", _schedule_unlinks)
+        event.listen(db.sync_session, "after_rollback", _drop_unlinks)
+        info["unlink_hooks"] = True
+    assert db.bind is not None
+    info.setdefault("pending_unlinks", []).append((db.bind, sha, path))
+
+
 async def delete_attachment(db: AsyncSession, attachment_id: int, *, root: Path) -> None:
-    """Delete the row; the file goes too unless another row shares its content."""
+    """Delete the row. Its file is removed after commit, unless another row shares it.
+
+    A rolled-back delete therefore never costs the file.
+    """
     att = await get_attachment(db, attachment_id)
     sha = att.sha256
     path = attachment_path(att, root=root) if att.storage_path else None
+    if sha is not None:
+        await _lock_content(db, sha)
     await db.delete(att)
     await db.flush()
-    if path is None:
-        return
-    shared = await db.scalar(
-        select(func.count()).select_from(Attachment).where(Attachment.sha256 == sha)
-    )
-    if not shared:
-        await asyncio.to_thread(path.unlink, missing_ok=True)
+    if sha is not None and path is not None:
+        _defer_unlink(db, sha, path)
