@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from pick2light.api import (
     attachments,
     auth,
+    backups,
     barcodes,
     categories,
     health,
@@ -50,6 +51,7 @@ for module in (
     search,
     trash,
     io,
+    backups,
 ):
     protected.include_router(module.router)
 api_router.include_router(protected)

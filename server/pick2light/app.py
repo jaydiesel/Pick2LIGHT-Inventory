@@ -1,12 +1,12 @@
 import asyncio
 from collections import deque
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -84,6 +84,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings or get_settings()
     app.state.recent_unknown = deque(maxlen=50)
+    app.state.maintenance = False
+
+    @app.middleware("http")
+    async def maintenance_mode(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if app.state.maintenance and request.url.path != "/api/v1/health":
+            return JSONResponse({"error": "maintenance"}, status_code=503)
+        return await call_next(request)
+
     app.add_exception_handler(AppError, _app_error)
     app.add_exception_handler(RequestValidationError, _request_validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)

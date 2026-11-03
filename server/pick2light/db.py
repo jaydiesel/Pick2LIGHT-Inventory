@@ -34,6 +34,12 @@ async def get_db() -> AsyncIterator[AsyncSession]:
             raise
 
 
+async def dispose_engines() -> None:
+    """Drop the pooled connections of the request engine (before a restore)."""
+    if _sessionmaker.cache_info().currsize:
+        await _sessionmaker().kw["bind"].dispose()
+
+
 def alembic_config(url: str | None = None) -> Config:
     cfg = Config()
     cfg.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
