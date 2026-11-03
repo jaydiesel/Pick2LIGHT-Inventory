@@ -30,6 +30,7 @@ export function createScanDetector(getOptions: () => ScannerOptions, onScan: (co
   }
 
   function handle(ev: KeyboardEvent) {
+    if (ev.target instanceof Element && ev.target.closest('[data-scan-ignore]')) return
     const opts = getOptions()
     const now = Date.now()
     const gap = now - last
