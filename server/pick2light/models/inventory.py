@@ -78,8 +78,9 @@ class Item(TimestampMixin, SoftDeleteMixin, Base):
     )
     min_stock: Mapped[int | None] = mapped_column(Integer)
     default_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
-    # The foreign key to `attachment` is added with attachments (Task 10).
-    photo_attachment_id: Mapped[int | None] = mapped_column(BigInteger)
+    photo_attachment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("attachment.id", ondelete="SET NULL")
+    )
     # Name, SKU, description and the searchable text of `attrs`, NFKC-normalised;
     # rebuilt by `refresh_search_text`. `search_vector` is derived from it by Postgres.
     search_text: Mapped[str] = mapped_column(Text, default="", server_default="")

@@ -8,10 +8,12 @@ from pick2light.models.definitions import (
     LocationType,
     LogEntryType,
 )
+from pick2light.models.files import Attachment, PurchaseSource
 from pick2light.models.inventory import Barcode, Item, LogEntry, Stock, StockMovement, Unit
 from pick2light.models.locations import Location
 
 __all__ = [
+    "Attachment",
     "Barcode",
     "Base",
     "Category",
@@ -22,6 +24,7 @@ __all__ = [
     "LocationType",
     "LogEntry",
     "LogEntryType",
+    "PurchaseSource",
     "Stock",
     "StockMovement",
     "Unit",
