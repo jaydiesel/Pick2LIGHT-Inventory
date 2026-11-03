@@ -56,10 +56,11 @@ ENV PATH=/app/server/.venv/bin:$PATH \
 RUN userdel --remove ubuntu 2> /dev/null; useradd --uid 1000 --create-home p2l \
  && mkdir -p /data /backups \
  && chown p2l:p2l /data /backups
-USER p2l
+COPY deploy/docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 VOLUME ["/data", "/backups"]
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
   CMD curl -fsS "http://127.0.0.1:${P2L_PORT}/api/v1/health" > /dev/null || exit 1
-ENTRYPOINT ["pick2light"]
+# Starts as root only to fix folder ownership, then runs as p2l (uid 1000).
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["serve"]

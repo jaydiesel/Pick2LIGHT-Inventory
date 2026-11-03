@@ -41,7 +41,7 @@ Open `http://<that-machine>/` and follow the setup wizard. To update later, run 
 (it backs up first).
 
 Backups land in `deploy/docker/backups/` by default (`P2L_BACKUP_DIR` in `.env`), and can be restored from the
-Backups page or with `docker compose exec server pick2light restore /backups/<file> --yes`.
+Backups page or with `docker compose exec -u p2l server pick2light restore /backups/<file> --yes`.
 
 ## Development
 

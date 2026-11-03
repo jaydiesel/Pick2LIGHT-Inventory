@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "Backing up before the update..."
-docker compose exec -T server pick2light backup
+docker compose exec -T -u p2l server pick2light backup
 newest="$(ls -t "${P2L_BACKUP_DIR:-./backups}"/pick2light-*.tar.gz 2> /dev/null | head -1 || true)"
 
 docker compose pull
@@ -22,7 +22,7 @@ done
 echo "The server did not come back healthy." >&2
 if [ -n "$newest" ]; then
   echo "Your pre-update backup is $(basename "$newest"). To restore it:" >&2
-  echo "  docker compose exec server pick2light restore /backups/$(basename "$newest") --yes" >&2
+  echo "  docker compose exec -u p2l server pick2light restore /backups/$(basename "$newest") --yes" >&2
 fi
 docker compose logs --tail 50 server >&2
 exit 1
