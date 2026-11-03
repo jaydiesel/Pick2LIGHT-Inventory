@@ -9,7 +9,12 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from sqlalchemy import make_url, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 # Keep any accidental default-settings use out of the working tree.
 os.environ.setdefault("P2L_DATA_DIR", tempfile.mkdtemp(prefix="p2l-test-data-"))
@@ -67,6 +72,36 @@ async def db(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
         finally:
             await session.close()
             await outer.rollback()
+
+
+@pytest_asyncio.fixture
+async def committed_db(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Sessions that really commit, for tests that need several independent transactions.
+
+    Afterwards every app table is truncated and every sequence restarted, so later tests
+    see the same empty database (and the same generated ids and codes) as before.
+    `alembic_version` is left alone.
+    """
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        tables = (
+            await conn.execute(
+                text(
+                    "SELECT quote_ident(tablename) FROM pg_tables "
+                    "WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
+                )
+            )
+        ).scalars()
+        await conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
+        sequences = (
+            await conn.execute(
+                text(
+                    "SELECT quote_ident(sequencename) FROM pg_sequences WHERE schemaname = 'public'"
+                )
+            )
+        ).scalars()
+        for name in list(sequences):
+            await conn.execute(text(f"ALTER SEQUENCE {name} RESTART"))
 
 
 @pytest.fixture

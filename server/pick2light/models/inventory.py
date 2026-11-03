@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -7,8 +8,10 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -20,6 +23,18 @@ from pick2light.models.base import Base, SoftDeleteMixin, TimestampMixin
 BARCODE_TARGET_TYPES = ("item", "unit", "location")
 UNIT_CONDITIONS = ("new", "tested_good", "untested", "faulty", "for_parts")
 UNIT_STATUSES = ("in_stock", "checked_out", "consumed", "disposed")
+MOVEMENT_REASONS = (
+    "create",
+    "import",
+    "check_out",
+    "check_in",
+    "consume",
+    "move",
+    "adjust",
+    "stocktake",
+    "undo",
+)
+MOVEMENT_SOURCES = ("ui", "scan", "import", "api", "stocktake")
 BARCODE_KINDS = ("sku", "unit_code", "location_code", "manufacturer", "supplier", "custom")
 
 
@@ -117,3 +132,45 @@ class Unit(TimestampMixin, SoftDeleteMixin, Base):
 Index(
     "ix_unit_attrs", Unit.attrs, postgresql_using="gin", postgresql_ops={"attrs": "jsonb_path_ops"}
 )
+
+
+class Stock(TimestampMixin, Base):
+    """Bulk quantity of an item in one location. Rows that reach 0 are kept as history."""
+
+    __tablename__ = "stock"
+    __table_args__ = (
+        UniqueConstraint("item_id", "location_id"),
+        CheckConstraint("quantity >= 0", name="quantity"),
+    )
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("location.id"), index=True)
+    quantity: Mapped[Decimal] = mapped_column(
+        Numeric(14, 3), default=Decimal(0), server_default="0"
+    )
+
+
+class StockMovement(TimestampMixin, Base):
+    """Append-only audit trail of every quantity and unit status change."""
+
+    __tablename__ = "stock_movement"
+    __table_args__ = (
+        CheckConstraint(
+            "reason IN ('create', 'import', 'check_out', 'check_in', 'consume', 'move',"
+            " 'adjust', 'stocktake', 'undo')",
+            name="reason",
+        ),
+        CheckConstraint("source IN ('ui', 'scan', 'import', 'api', 'stocktake')", name="source"),
+    )
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id"), index=True)
+    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    quantity_delta: Mapped[Decimal] = mapped_column(Numeric(14, 3))
+    reason: Mapped[str] = mapped_column(String(20))
+    source: Mapped[str] = mapped_column(String(20), default="ui", server_default="ui")
+    reverses_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movement.id"), unique=True
+    )
+    note: Mapped[str | None] = mapped_column(Text)

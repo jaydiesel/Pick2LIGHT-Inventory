@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from pick2light.api import barcodes, categories, health, items, location_types, locations, units
+from pick2light.api import (
+    barcodes,
+    categories,
+    health,
+    items,
+    location_types,
+    locations,
+    stock,
+    units,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -10,3 +19,4 @@ api_router.include_router(locations.router)
 api_router.include_router(barcodes.router)
 api_router.include_router(items.router)
 api_router.include_router(units.router)
+api_router.include_router(stock.router)

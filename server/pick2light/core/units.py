@@ -4,6 +4,7 @@ Services flush but never commit; the request-scoped session commits.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -17,7 +18,7 @@ from pick2light.core.items import get_item
 from pick2light.core.locations import LocationRef, get_location, location_path
 from pick2light.core.sku import ensure_unique_code, generate_unit_code, next_sequence, sanitize_code
 from pick2light.errors import InvalidOperation, NotFound, ValidationFailed
-from pick2light.models import Barcode, Item, Unit
+from pick2light.models import Barcode, Item, StockMovement, Unit
 
 Condition = Literal["new", "tested_good", "untested", "faulty", "for_parts"]
 
@@ -80,7 +81,14 @@ def _clean_serial(serial: str | None) -> str | None:
     return serial or None
 
 
-async def create_unit(db: AsyncSession, data: UnitIn) -> Unit:
+async def create_unit(
+    db: AsyncSession,
+    data: UnitIn,
+    *,
+    reason: Literal["create", "import"] = "create",
+    source: str = "ui",
+) -> Unit:
+    """Create a unit and its first movement (+1 into its location, if it has one)."""
     item = await get_item(db, data.item_id)
     if await effective_tracking_mode(db, item.category_id) != "unit":
         raise InvalidOperation("Units can only be created for items in unit-tracked categories")
@@ -117,6 +125,17 @@ async def create_unit(db: AsyncSession, data: UnitIn) -> Unit:
     await register_barcode(db, unit_code, "unit", unit.id, "unit_code")
     if serial:
         await register_barcode(db, serial, "unit", unit.id, "manufacturer")
+    db.add(
+        StockMovement(
+            item_id=item.id,
+            unit_id=unit.id,
+            to_location_id=unit.location_id,
+            quantity_delta=Decimal(1),
+            reason=reason,
+            source=source,
+        )
+    )
+    await db.flush()
     return unit
 
 

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pick2light.core.barcodes import code_exists, register_barcode, remove_barcodes_for
 from pick2light.core.sku import ensure_unique_code
 from pick2light.errors import Conflict, NotFound, ValidationFailed
-from pick2light.models import Location, LocationType
+from pick2light.models import Location, LocationType, Stock, Unit
 
 LightChildren = Literal["inherit", "on", "off"]
 
@@ -181,7 +181,7 @@ async def move_location(db: AsyncSession, location_id: int, new_parent_id: int |
 async def delete_location(db: AsyncSession, location_id: int) -> None:
     """Soft-delete; the row keeps its code but the code stops scanning.
 
-    Refusing while stock or units are present is added with stock (Task 8).
+    Refused while it has sub-locations, bulk stock, or in-stock / checked-out units.
     """
     location = await get_location(db, location_id)
     child = await db.scalar(
@@ -191,6 +191,20 @@ async def delete_location(db: AsyncSession, location_id: int) -> None:
     )
     if child is not None:
         raise Conflict("Location still has sub-locations; delete or move them first")
+    has_stock = await db.scalar(
+        select(Stock.id).where(Stock.location_id == location_id, Stock.quantity > 0).limit(1)
+    )
+    has_units = await db.scalar(
+        select(Unit.id)
+        .where(
+            Unit.location_id == location_id,
+            Unit.deleted_at.is_(None),
+            Unit.status.in_(("in_stock", "checked_out")),
+        )
+        .limit(1)
+    )
+    if has_stock is not None or has_units is not None:
+        raise Conflict("Location still holds stock or units; move or consume them first")
     location.deleted_at = datetime.now(UTC)
     await remove_barcodes_for(db, "location", location_id)
     await db.flush()

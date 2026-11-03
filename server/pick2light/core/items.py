@@ -23,7 +23,7 @@ from pick2light.core.fields import display_values, text_values, validate_values
 from pick2light.core.locations import get_location
 from pick2light.core.sku import ensure_unique_code, generate_sku, next_sequence, sanitize_code
 from pick2light.errors import Conflict, InvalidOperation, NotFound, ValidationFailed
-from pick2light.models import Item, Unit
+from pick2light.models import Item, Stock, Unit
 
 ACTIVE_UNIT_STATUSES = ("in_stock", "checked_out")
 
@@ -195,9 +195,12 @@ async def update_item(db: AsyncSession, item_id: int, patch: ItemPatch) -> Item:
     return item
 
 
-# Hook for bulk stock (Task 8): total quantity across locations. Zero until stock exists.
 async def bulk_quantity(db: AsyncSession, item_id: int) -> float:
-    return 0.0
+    """Total bulk quantity across all locations."""
+    total = await db.scalar(
+        select(func.coalesce(func.sum(Stock.quantity), 0)).where(Stock.item_id == item_id)
+    )
+    return float(total or 0)
 
 
 async def on_hand(db: AsyncSession, item_id: int, mode: str) -> float:
