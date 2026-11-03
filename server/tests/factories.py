@@ -5,7 +5,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.core.categories import CategoryIn, FieldDefIn, add_field, create_category
-from pick2light.models import Category
+from pick2light.core.locations import LocationIn, create_location
+from pick2light.models import Category, Location
 
 
 async def make_category(
@@ -30,3 +31,12 @@ async def make_category(
     for spec in fields or []:
         await add_field(db, category.id, FieldDefIn.model_validate({"label": spec["key"], **spec}))
     return category
+
+
+async def make_location(
+    db: AsyncSession, name: str = "Loc", parent: Location | None = None, **kw: Any
+) -> Location:
+    return await create_location(
+        db,
+        LocationIn.model_validate({"name": name, "parent_id": parent.id if parent else None, **kw}),
+    )

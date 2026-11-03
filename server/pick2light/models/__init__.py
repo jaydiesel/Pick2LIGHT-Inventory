@@ -8,12 +8,16 @@ from pick2light.models.definitions import (
     LocationType,
     LogEntryType,
 )
+from pick2light.models.inventory import Barcode
+from pick2light.models.locations import Location
 
 __all__ = [
+    "Barcode",
     "Base",
     "Category",
     "CategorySequence",
     "FieldDefinition",
+    "Location",
     "LocationType",
     "LogEntryType",
 ]

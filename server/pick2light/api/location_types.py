@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from pick2light.api.deps import DB
-from pick2light.errors import NotFound
-from pick2light.models import LocationType
+from pick2light.errors import Conflict, NotFound
+from pick2light.models import Location, LocationType
 
 router = APIRouter(prefix="/location-types", tags=["location-types"])
 
@@ -61,6 +61,20 @@ async def update_location_type(
 
 @router.delete("/{location_type_id}", status_code=204)
 async def delete_location_type(location_type_id: int, db: DB) -> Response:
-    await db.delete(await _get(db, location_type_id))
+    location_type = await _get(db, location_type_id)
+    in_use = await db.scalar(
+        select(Location.id)
+        .where(Location.location_type_id == location_type_id, Location.deleted_at.is_(None))
+        .limit(1)
+    )
+    if in_use is not None:
+        raise Conflict("Location type is still used by locations")
+    # Trashed locations lose their type so the foreign key does not block the delete.
+    await db.execute(
+        update(Location)
+        .where(Location.location_type_id == location_type_id)
+        .values(location_type_id=None)
+    )
+    await db.delete(location_type)
     await db.flush()
     return Response(status_code=204)
