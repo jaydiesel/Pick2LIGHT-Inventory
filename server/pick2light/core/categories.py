@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pick2light.core.fields import FieldSpec
 from pick2light.errors import Conflict, NotFound, ValidationFailed
 from pick2light.models import Category, FieldDefinition, LogEntryType
 
@@ -481,6 +482,17 @@ async def effective_field_defs(db: AsyncSession, category_id: int) -> list[Field
     depth = {c.id: i for i, c in enumerate(chain)}
     rows = await db.scalars(select(FieldDefinition).where(FieldDefinition.category_id.in_(depth)))
     return sorted(rows, key=lambda f: (depth[f.category_id], f.order, f.id))
+
+
+async def effective_fields(
+    db: AsyncSession, category_id: int, scope: str | None = None
+) -> list[FieldSpec]:
+    """Effective field definitions as validation specs, optionally only one scope."""
+    return [
+        FieldSpec.from_definition(f)
+        for f in await effective_field_defs(db, category_id)
+        if scope is None or f.scope == scope
+    ]
 
 
 # --------------------------------------------------------------------------- log entry types
