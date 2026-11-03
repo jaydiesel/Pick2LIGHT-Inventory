@@ -268,16 +268,78 @@ async def update_category(db: AsyncSession, category_id: int, data: CategoryPatc
     if "name" in changes and changes["name"] is None:
         raise ValidationFailed({"name": "required"})
 
-    if "parent_id" in changes and changes["parent_id"] != category.parent_id:
+    moving = "parent_id" in changes and changes["parent_id"] != category.parent_id
+    mode_changing = (
+        "tracking_mode" in changes and changes["tracking_mode"] != category.tracking_mode
+    )
+    if moving:
         await _check_move(db, category, changes["parent_id"])
-    if "tracking_mode" in changes and changes["tracking_mode"] != category.tracking_mode:
-        if await _items_exist(db, await descendant_ids(db, category.id)):
-            raise Conflict("Cannot change the tracking mode of a category that has items")
+    if mode_changing and await _items_exist(db, await descendant_ids(db, category.id)):
+        raise Conflict("Cannot change the tracking mode of a category that has items")
+    if moving or mode_changing:
+        await _check_unit_usage(
+            db,
+            category,
+            new_parent_id=changes["parent_id"] if moving else category.parent_id,
+            new_mode=changes["tracking_mode"] if mode_changing else category.tracking_mode,
+        )
 
     for name, value in changes.items():
         setattr(category, name, value)
     await db.flush()
     return category
+
+
+async def _subtree_modes(
+    db: AsyncSession, root: Category, parent_id: int | None, root_mode: str | None
+) -> dict[int, TrackingMode]:
+    """Effective tracking mode of `root` and each descendant under a hypothetical parent/mode."""
+    base: TrackingMode = (
+        "bulk" if parent_id is None else await effective_tracking_mode(db, parent_id)
+    )
+    ids = await descendant_ids(db, root.id)
+    rows = {c.id: c for c in await db.scalars(select(Category).where(Category.id.in_(ids)))}
+
+    def mode_of(category: Category) -> TrackingMode:
+        explicit = root_mode if category.id == root.id else category.tracking_mode
+        if explicit in ("bulk", "unit"):
+            return explicit  # type: ignore[return-value]
+        if category.id == root.id:
+            return base
+        return mode_of(rows[category.parent_id])  # type: ignore[index]
+
+    return {cid: mode_of(c) for cid, c in rows.items()}
+
+
+async def _check_unit_usage(
+    db: AsyncSession, category: Category, new_parent_id: int | None, new_mode: str | None
+) -> None:
+    """Refuse a move / mode change that turns unit-tracked categories into bulk ones
+    while they still hold unit-scope fields or unit log entry types."""
+    before = await _subtree_modes(db, category, category.parent_id, category.tracking_mode)
+    after = await _subtree_modes(db, category, new_parent_id, new_mode)
+    turning_bulk = [cid for cid, mode in after.items() if mode == "bulk" and before[cid] == "unit"]
+    if not turning_bulk:
+        return
+    field_key = await db.scalar(
+        select(FieldDefinition.key)
+        .where(FieldDefinition.category_id.in_(turning_bulk), FieldDefinition.scope == "unit")
+        .order_by(FieldDefinition.id)
+        .limit(1)
+    )
+    if field_key is not None:
+        raise Conflict(
+            f"Unit-scope field '{field_key}' requires unit tracking; "
+            "remove it before making this subtree bulk-tracked"
+        )
+    log_key = await db.scalar(
+        _live_log_keys(turning_bulk).where(LogEntryType.applies_to == "unit").limit(1)
+    )
+    if log_key is not None:
+        raise Conflict(
+            f"Log entry type '{log_key}' applies to units; "
+            "remove it before making this subtree bulk-tracked"
+        )
 
 
 async def _check_move(db: AsyncSession, category: Category, new_parent_id: int | None) -> None:
@@ -386,9 +448,13 @@ async def get_field(db: AsyncSession, field_id: int) -> FieldDefinition:
 async def update_field(db: AsyncSession, field_id: int, data: FieldDefPatch) -> FieldDefinition:
     field = await get_field(db, field_id)
     changes = data.model_dump(exclude_unset=True)
-    for required in ("key", "label", "type", "scope"):
-        if required in changes and changes[required] is None:
-            raise ValidationFailed({required: "required"})
+    non_nullable = (
+        "key", "label", "type", "scope", "order", "required", "filterable", "show_on_label",
+        "number_si_prefixes",
+    )  # fmt: skip
+    for name in non_nullable:
+        if name in changes and changes[name] is None:
+            raise ValidationFailed({name: "must not be null"})
     errors: dict[str, str] = {}
     _check_options(changes.get("type", field.type), changes.get("options", field.options), errors)
     if errors:

@@ -237,3 +237,54 @@ async def test_log_types_inherit_and_conflict(db):
     await create_log_type(
         db, child.id, LogEntryTypeIn(key="capacity_test", name="x", applies_to="item")
     )
+
+
+async def test_update_field_null_for_non_nullable_refused(db):
+    cat = await make_category(db, fields=[{"key": "pkg", "type": "text"}])
+    f = (await effective_field_defs(db, cat.id))[0]
+    for name in ("order", "required", "filterable", "show_on_label", "number_si_prefixes"):
+        with pytest.raises(ValidationFailed) as exc:
+            await update_field(db, f.id, FieldDefPatch.model_validate({name: None}))
+        assert name in (exc.value.fields or {})
+
+
+UNIT_FIELD = {"key": "serial", "type": "text", "scope": "unit"}
+
+
+async def test_move_unit_category_under_bulk_refused(db):
+    bulk = await make_category(db, "Bulk")
+    parent = await make_category(db, "UnitParent", tracking_mode="unit")
+    inheriting = await make_category(db, "Inheriting", parent=parent, fields=[UNIT_FIELD])
+    with pytest.raises(Conflict, match="serial"):
+        await update_category(db, inheriting.id, CategoryPatch(parent_id=bulk.id))
+    assert inheriting.parent_id == parent.id
+    # an explicitly unit-tracked category keeps its mode wherever it goes
+    explicit = await make_category(db, "Explicit", tracking_mode="unit", fields=[UNIT_FIELD])
+    moved = await update_category(db, explicit.id, CategoryPatch(parent_id=bulk.id))
+    assert moved.parent_id == bulk.id
+
+
+async def test_move_unit_category_under_unit_parent_ok(db):
+    parent = await make_category(db, "Parent", tracking_mode="unit")
+    child = await make_category(db, "Child", parent=parent, fields=[UNIT_FIELD])
+    moved = await update_category(db, child.id, CategoryPatch(parent_id=None, tracking_mode="unit"))
+    assert moved.parent_id is None
+
+
+async def test_set_bulk_with_unit_fields_in_subtree_refused(db):
+    unit = await make_category(db, "Unit", tracking_mode="unit")
+    child = await make_category(db, "Child", parent=unit, fields=[UNIT_FIELD])
+    with pytest.raises(Conflict, match="serial"):
+        await update_category(db, unit.id, CategoryPatch(tracking_mode="bulk"))
+    # a child that overrides to unit keeps its own mode, so the change is fine
+    await update_category(db, child.id, CategoryPatch(tracking_mode="unit"))
+    await update_category(db, unit.id, CategoryPatch(tracking_mode="bulk"))
+
+
+async def test_set_bulk_with_unit_log_type_refused(db):
+    unit = await make_category(db, "Unit", tracking_mode="unit")
+    await create_log_type(
+        db, unit.id, LogEntryTypeIn(key="repair", name="Repair", applies_to="unit")
+    )
+    with pytest.raises(Conflict, match="repair"):
+        await update_category(db, unit.id, CategoryPatch(tracking_mode="bulk"))
