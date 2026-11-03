@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -8,6 +10,25 @@ from pick2light import __version__
 from pick2light.config import Settings, get_settings
 from pick2light.db import make_engine, make_sessionmaker
 from pick2light.errors import AppError, ValidationFailed
+
+log = logging.getLogger("pick2light")
+PURGE_INTERVAL_S = 24 * 3600
+
+
+async def _purge_loop(app: FastAPI) -> None:
+    """Purge expired trash on start-up and then once a day."""
+    from pick2light.core.trash import purge_expired
+
+    while True:
+        try:
+            async with app.state.sessionmaker() as db:
+                count = await purge_expired(db, 30, root=app.state.settings.attachments_dir)
+                await db.commit()
+                if count:
+                    log.info("Purged %d expired trash entries", count)
+        except Exception:
+            log.exception("Trash purge failed")
+        await asyncio.sleep(PURGE_INTERVAL_S)
 
 
 def _error_body(exc: AppError) -> dict:
@@ -22,7 +43,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        tasks = [asyncio.create_task(_purge_loop(app))]
         yield
+        for task in tasks:
+            task.cancel()
         await app.state.engine.dispose()
 
     app = FastAPI(

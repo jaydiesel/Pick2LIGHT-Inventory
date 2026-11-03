@@ -12,6 +12,7 @@ from pick2light.api import (
     purchase,
     search,
     stock,
+    trash,
     units,
 )
 
@@ -28,6 +29,7 @@ ROUTERS = [
     attachments,
     purchase,
     search,
+    trash,
 ]
 
 api_router = APIRouter()

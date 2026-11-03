@@ -54,7 +54,7 @@ class Item(TimestampMixin, SoftDeleteMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
     attrs: Mapped[dict] = mapped_column(JSONB, default=dict)
     min_stock: Mapped[int | None] = mapped_column(Integer)
-    default_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    default_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id", ondelete="SET NULL"))
     photo_attachment_id: Mapped[int | None] = mapped_column(ForeignKey("attachment.id", ondelete="SET NULL"))
     search_text: Mapped[str] = mapped_column(Text, default="")
     search_vector: Mapped[str] = mapped_column(
@@ -72,10 +72,12 @@ class Unit(TimestampMixin, SoftDeleteMixin, Base):
         Index("ix_unit_attrs", "attrs", postgresql_using="gin", postgresql_ops={"attrs": "jsonb_path_ops"}),
     )
 
-    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
     unit_code: Mapped[str] = mapped_column(String(120), unique=True)
     serial_number: Mapped[str | None] = mapped_column(String(200))
-    location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"), index=True)
+    location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("location.id", ondelete="SET NULL"), index=True
+    )
     condition: Mapped[str] = mapped_column(String(16), default="untested")
     status: Mapped[str] = mapped_column(String(16), default="in_stock")
     attrs: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -89,7 +91,7 @@ class Stock(TimestampMixin, Base):
     )
 
     item_id: Mapped[int] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("location.id"), index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("location.id", ondelete="CASCADE"), index=True)
     quantity: Mapped[float] = mapped_column(Numeric(14, 4, asdecimal=False), default=0)
 
 
@@ -103,10 +105,10 @@ class StockMovement(TimestampMixin, Base):
         CheckConstraint("source IN ('ui','scan','import','api','stocktake')", name="source"),
     )
 
-    item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id"), index=True)
-    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id"), index=True)
-    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
-    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id", ondelete="SET NULL"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id", ondelete="SET NULL"), index=True)
+    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id", ondelete="SET NULL"))
+    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id", ondelete="SET NULL"))
     quantity_delta: Mapped[float] = mapped_column(Numeric(14, 4, asdecimal=False))
     reason: Mapped[str] = mapped_column(String(16))
     source: Mapped[str] = mapped_column(String(16), default="ui")
@@ -118,7 +120,9 @@ class LogEntry(TimestampMixin, Base):
     __tablename__ = "log_entry"
     __table_args__ = (CheckConstraint("(unit_id IS NULL) <> (item_id IS NULL)", name="one_target"),)
 
-    log_entry_type_id: Mapped[int] = mapped_column(ForeignKey("log_entry_type.id"), index=True)
+    log_entry_type_id: Mapped[int] = mapped_column(
+        ForeignKey("log_entry_type.id", ondelete="CASCADE"), index=True
+    )
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("unit.id", ondelete="CASCADE"), index=True)
     item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id", ondelete="CASCADE"), index=True)
     performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
