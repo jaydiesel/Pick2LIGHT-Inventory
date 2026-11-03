@@ -5,8 +5,10 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.core.categories import CategoryIn, FieldDefIn, add_field, create_category
+from pick2light.core.items import ItemIn, create_item
 from pick2light.core.locations import LocationIn, create_location
-from pick2light.models import Category, Location
+from pick2light.core.units import UnitIn, create_unit
+from pick2light.models import Category, Item, Location, Unit
 
 
 async def make_category(
@@ -40,3 +42,13 @@ async def make_location(
         db,
         LocationIn.model_validate({"name": name, "parent_id": parent.id if parent else None, **kw}),
     )
+
+
+async def make_item(db: AsyncSession, category: Category, name: str = "Item", **kw: Any) -> Item:
+    return await create_item(
+        db, ItemIn.model_validate({"category_id": category.id, "name": name, **kw})
+    )
+
+
+async def make_unit(db: AsyncSession, item: Item, **kw: Any) -> Unit:
+    return await create_unit(db, UnitIn.model_validate({"item_id": item.id, **kw}))

@@ -7,15 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.api.deps import DB
 from pick2light.core.barcodes import AUTOMATIC_KINDS, lookup_barcode, register_barcode
+from pick2light.core.items import get_item
 from pick2light.core.locations import get_location
+from pick2light.core.units import get_unit
 from pick2light.errors import InvalidOperation, NotFound, ValidationFailed
 from pick2light.models import Barcode
 
 router = APIRouter(prefix="/barcodes", tags=["barcodes"])
 
-# Extension point: Task 7 adds "item" and "unit" here. Each entry raises NotFound for a
-# target that does not exist.
+# Each entry raises NotFound for a target that does not exist.
 TARGET_CHECKS: dict[str, Callable[[AsyncSession, int], Awaitable[object]]] = {
+    "item": get_item,
+    "unit": get_unit,
     "location": get_location,
 }
 

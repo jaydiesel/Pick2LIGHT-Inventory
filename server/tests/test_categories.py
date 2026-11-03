@@ -288,3 +288,28 @@ async def test_set_bulk_with_unit_log_type_refused(db):
     )
     with pytest.raises(Conflict, match="repair"):
         await update_category(db, unit.id, CategoryPatch(tracking_mode="bulk"))
+
+
+async def test_delete_category_with_items_refused(db):
+    from tests.factories import make_item
+
+    category = await make_category(db, "Stocked")
+    item = await make_item(db, category, "Thing")
+    with pytest.raises(Conflict):
+        await delete_category(db, category.id)
+    from pick2light.core.items import delete_item
+
+    await delete_item(db, item.id)
+    await delete_category(db, category.id)
+
+
+async def test_tracking_mode_change_with_items_refused(db):
+    from tests.factories import make_item
+
+    parent = await make_category(db, "Parent")
+    child = await make_category(db, "Child", parent=parent)
+    await make_item(db, child, "Thing")
+    with pytest.raises(Conflict):
+        await update_category(db, parent.id, CategoryPatch(tracking_mode="unit"))
+    with pytest.raises(Conflict):
+        await update_category(db, child.id, CategoryPatch(tracking_mode="unit"))

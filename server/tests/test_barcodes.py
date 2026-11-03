@@ -101,9 +101,9 @@ async def test_api_create_rejects_automatic_kinds_and_missing_targets(client):
     assert r.status_code == 404
     r = await client.post(
         "/api/v1/barcodes",
-        json={"code": "ZZ", "target_type": "item", "target_id": 1, "kind": "custom"},
+        json={"code": "ZZ", "target_type": "item", "target_id": 99999, "kind": "custom"},
     )
-    assert r.status_code == 422  # items arrive with Task 7
+    assert r.status_code == 404
 
 
 async def test_api_delete_automatic_barcode_refused(client):

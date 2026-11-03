@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.core.fields import FieldSpec
 from pick2light.errors import Conflict, NotFound, ValidationFailed
-from pick2light.models import Category, FieldDefinition, LogEntryType
+from pick2light.models import Category, FieldDefinition, Item, LogEntryType
 
 KEY_PATTERN = r"^[a-z][a-z0-9_]{0,62}$"
 Key = Annotated[str, Field(pattern=KEY_PATTERN)]
@@ -246,12 +246,13 @@ async def list_category_outs(db: AsyncSession) -> list[CategoryOut]:
 
 
 async def _items_exist(db: AsyncSession, category_ids: Sequence[int]) -> bool:
-    """Whether any non-deleted item belongs to one of these categories.
-
-    Placeholder: the item table arrives with the items task, which fills this in.
-    The tracking-mode and delete guards below already call it.
-    """
-    return False
+    """Whether any non-deleted item belongs to one of these categories."""
+    found = await db.scalar(
+        select(Item.id)
+        .where(Item.category_id.in_(category_ids), Item.deleted_at.is_(None))
+        .limit(1)
+    )
+    return found is not None
 
 
 async def create_category(db: AsyncSession, data: CategoryIn) -> Category:
