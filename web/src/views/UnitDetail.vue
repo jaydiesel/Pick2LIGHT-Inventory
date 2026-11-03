@@ -12,6 +12,7 @@ import LatestValues from '@/components/LatestValues.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
 import LogEntryForm from '@/components/LogEntryForm.vue'
 import MovementTable from '@/components/MovementTable.vue'
+import { attrsPatch } from '@/lib/attrs'
 import { printLabels } from '@/lib/labels'
 
 const props = defineProps<{ id: string }>()
@@ -87,8 +88,7 @@ async function pick(id: number) {
 
 async function saveAttrs() {
   attrErrors.value = {}
-  const patch: Record<string, unknown> = { ...attrs.value }
-  for (const k of Object.keys(unit.value?.attrs ?? {})) if (!(k in patch) && unitSpecs.value.some((s) => s.key === k)) patch[k] = null
+  const patch = attrsPatch(unit.value?.attrs ?? {}, attrs.value, unitSpecs.value.map((s) => s.key))
   try {
     await apiFetch(`/units/${props.id}`, { method: 'PATCH', json: { attrs: patch } })
     editing.value = false

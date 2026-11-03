@@ -6,6 +6,7 @@ import { ApiError, apiFetch } from '@/api/client'
 import type { CategoryOut, FieldDefOut, ItemOut, LocationOut } from '@/api/types'
 import FieldForm from '@/components/FieldForm.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
+import { attrsPatch } from '@/lib/attrs'
 
 const props = defineProps<{ id?: string }>()
 const route = useRoute()
@@ -81,13 +82,13 @@ async function save() {
   }
   try {
     let item: ItemOut
+    const keys = itemSpecs.value.map((s) => s.key)
     if (props.id) {
       const original = await apiFetch<ItemOut>(`/items/${props.id}`)
-      const attrs: Record<string, unknown> = { ...form.attrs }
-      for (const k of Object.keys(original.attrs)) if (!(k in attrs) && itemSpecs.value.some((s) => s.key === k)) attrs[k] = null
+      const attrs = attrsPatch(original.attrs, form.attrs, keys)
       item = await apiFetch<ItemOut>(`/items/${props.id}`, { method: 'PATCH', json: { ...body, attrs } })
     } else {
-      item = await apiFetch<ItemOut>('/items', { method: 'POST', json: body })
+      item = await apiFetch<ItemOut>('/items', { method: 'POST', json: { ...body, attrs: attrsPatch({}, form.attrs, keys) } })
       if (barcode.value) {
         await apiFetch('/barcodes', { method: 'POST', json: { code: barcode.value, target_type: 'item', target_id: item.id, kind: 'manufacturer' } })
         await apiFetch(`/scan/unknown/${encodeURIComponent(barcode.value)}`, { method: 'DELETE' }).catch(() => undefined)
