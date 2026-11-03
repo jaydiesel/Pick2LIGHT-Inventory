@@ -4,6 +4,7 @@ import Dialog from 'primevue/dialog'
 import { computed, onMounted, ref } from 'vue'
 import { apiFetch } from '../api/client'
 import type { components } from '../api/schema'
+import LocationTree from './LocationTree.vue'
 
 type StockRow = components['schemas']['StockRow']
 type LocationRef = components['schemas']['LocationRef']
@@ -20,27 +21,18 @@ interface Choice {
   id: number
   label: string
   detail?: string
-  depth: number
 }
 
 const tree = ref<LocationNode[]>([])
 const loadError = ref('')
 
-function flatten(nodes: LocationNode[], depth = 0): Choice[] {
-  return nodes.flatMap((n) => [
-    { id: n.id, label: n.name, detail: n.code, depth },
-    ...flatten(n.children, depth + 1),
-  ])
-}
-
 const fromScan = computed<Choice[]>(() =>
   (props.locations ?? []).map((l) =>
     'location_id' in l
-      ? { id: l.location_id, label: l.location_path.map((p) => p.name).join(' / '), detail: `qty ${l.quantity}`, depth: 0 }
-      : { id: l.id, label: l.name, detail: l.code, depth: 0 },
+      ? { id: l.location_id, label: l.location_path.map((p) => p.name).join(' / '), detail: `qty ${l.quantity}` }
+      : { id: l.id, label: l.name, detail: l.code },
   ),
 )
-const choices = computed(() => (fromScan.value.length ? fromScan.value : flatten(tree.value)))
 
 onMounted(async () => {
   if (fromScan.value.length) return
@@ -55,22 +47,26 @@ onMounted(async () => {
 <template>
   <Dialog :visible="true" modal :header="header ?? 'Choose a location'" :style="{ width: '28rem' }" @update:visible="emit('cancel')">
     <p v-if="loadError" role="alert">{{ loadError }}</p>
-    <ul class="choices">
-      <li v-for="c in choices" :key="c.id">
-        <Button :label="c.label" :data-test="`loc-${c.id}`" text class="choice" :style="{ paddingLeft: `${0.75 + c.depth * 1.25}rem` }" @click="emit('select', c.id)">
-          <template #default>
-            <span class="name">{{ c.label }}</span>
-            <small v-if="c.detail" class="muted">{{ c.detail }}</small>
-          </template>
-        </Button>
-      </li>
-    </ul>
-    <p v-if="!choices.length && !loadError" class="muted">No locations yet.</p>
+    <div class="choices">
+      <ul v-if="fromScan.length" class="scan-choices">
+        <li v-for="c in fromScan" :key="c.id">
+          <Button :label="c.label" :data-test="`loc-${c.id}`" text class="choice" @click="emit('select', c.id)">
+            <template #default>
+              <span class="name">{{ c.label }}</span>
+              <small v-if="c.detail" class="muted">{{ c.detail }}</small>
+            </template>
+          </Button>
+        </li>
+      </ul>
+      <LocationTree v-else :nodes="tree" selectable @select="emit('select', $event)" />
+    </div>
+    <p v-if="!fromScan.length && !tree.length && !loadError" class="muted">No locations yet.</p>
     <template #footer><Button label="Cancel" text @click="emit('cancel')" /></template>
   </Dialog>
 </template>
 
 <style scoped>
-.choices { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.scan-choices { list-style: none; margin: 0; padding: 0; }
+.choices { margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
 .choice { width: 100%; justify-content: space-between; }
 </style>
