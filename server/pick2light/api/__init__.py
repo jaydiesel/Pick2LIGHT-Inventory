@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from pick2light.api import (
     attachments,
     auth,
+    backups,
     barcodes,
     categories,
     health,
@@ -42,6 +43,7 @@ PROTECTED = [
     scan.router,
     io.router,
     labels.router,
+    backups.router,
 ]
 
 api_router = APIRouter()

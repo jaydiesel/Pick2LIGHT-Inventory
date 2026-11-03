@@ -62,6 +62,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.recent_unknown = deque(maxlen=50)
+    app.state.maintenance = False
+
+    @app.middleware("http")
+    async def _maintenance(request: Request, call_next):
+        if app.state.maintenance and request.url.path != "/api/v1/health":
+            return JSONResponse(
+                {"error": "maintenance", "message": "Restoring a backup — try again in a moment"},
+                status_code=503,
+            )
+        return await call_next(request)
+
     app.state.engine = make_engine(settings.database_url)
     app.state.sessionmaker = make_sessionmaker(app.state.engine)
 

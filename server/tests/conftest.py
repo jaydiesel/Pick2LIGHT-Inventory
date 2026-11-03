@@ -123,7 +123,8 @@ async def committed_db(engine: AsyncEngine):
     async with engine.begin() as conn:
         rows = await conn.execute(
             text(
-                "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'"
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' "
+                "AND tablename NOT IN ('alembic_version', 'label_template')"  # keep migration seed data
             )
         )
         tables = ", ".join(f'"{r[0]}"' for r in rows)
