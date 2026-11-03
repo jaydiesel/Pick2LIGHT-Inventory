@@ -7,6 +7,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, func, select
 
+from pick2light.core.barcodes import register_barcode
 from pick2light.core.categories import LogEntryTypeIn, create_log_type
 from pick2light.core.csv_io import (
     ImportOptions,
@@ -434,3 +435,111 @@ async def test_api_export_and_import(client: httpx.AsyncClient, db):
     assert await _count(db, Item) == 2
     bad = await client.post("/api/v1/import/csv/apply", files=files, data={"options": "{not json"})
     assert bad.status_code == 422
+
+
+def _refs(data):
+    """(section, column, parent section, row id) for every reference that points nowhere."""
+    ids = {
+        k: {r["id"] for r in v}
+        for k, v in data.items()
+        if isinstance(v, list) and v and "id" in v[0]
+    }
+    ids.setdefault("units", set())
+    checks = [
+        ("units", "item_id", "items"),
+        ("stock", "item_id", "items"),
+        ("stock", "location_id", "locations"),
+        ("log_entries", "item_id", "items"),
+        ("log_entries", "unit_id", "units"),
+        ("stock_movements", "item_id", "items"),
+        ("stock_movements", "unit_id", "units"),
+        ("purchase_sources", "item_id", "items"),
+    ]
+    bad = []
+    for section, col, parent in checks:
+        for row in data[section]:
+            if row[col] is not None and row[col] not in ids.get(parent, set()):
+                bad.append((section, col, row[col]))
+    for row in data["barcodes"]:
+        parent = {"item": "items", "unit": "units", "location": "locations"}[row["target_type"]]
+        if row["target_id"] not in ids.get(parent, set()):
+            bad.append(("barcodes", row["code"], row["target_id"]))
+    for row in data["attachments"]:
+        parent = {"item": "items", "unit": "units", "location": "locations"}.get(row["owner_type"])
+        if parent and row["owner_id"] not in ids.get(parent, set()):
+            bad.append(("attachments", "owner_id", row["owner_id"]))
+    return bad
+
+
+async def test_full_json_has_no_dangling_references(db):
+    from pick2light.core.items import delete_item
+    from pick2light.core.locations import delete_location
+    from pick2light.core.stock import add_stock, consume_unit, remove_stock
+    from pick2light.core.units import delete_unit
+
+    loc = await make_location(db, "Shelf")
+    trashed_loc = await make_location(db, "Old")
+    bulk = await _resistors(db)
+    live = await make_item(db, bulk, "Live")
+    gone = await make_item(db, bulk, "Gone")
+    await add_stock(db, gone.id, loc.id, 2)
+    await add_stock(db, live.id, trashed_loc.id, 1)
+    await remove_stock(db, gone.id, loc.id, 2)
+    await register_barcode(db, "GONE-BC", "item", gone.id, "manufacturer")
+    cells = await make_category(db, "Cells", tracking_mode="unit")
+    cell_item = await make_item(db, cells, "18650")
+    unit = await make_unit(db, cell_item, location_id=loc.id)
+    log_type = await create_log_type(
+        db,
+        cells.id,
+        LogEntryTypeIn.model_validate({"key": "cap", "name": "Cap", "applies_to": "unit"}),
+    )
+    await add_log_entry(db, LogEntryIn(log_entry_type_id=log_type.id, unit_id=unit.id))
+    other = await make_unit(db, cell_item, location_id=loc.id)
+    await consume_unit(db, unit.id)
+    await delete_unit(db, unit.id)
+    await consume_unit(db, other.id)
+    await delete_item(db, gone.id)
+    await remove_stock(db, live.id, trashed_loc.id, 1)
+    await delete_location(db, trashed_loc.id)
+    await delete_unit(db, other.id)
+    await delete_item(db, cell_item.id)
+
+    data = await export_full_json(db)
+    assert _refs(data) == []
+    assert [i["sku"] for i in data["items"]] == [live.sku]
+    assert data["units"] == [] and data["log_entries"] == []
+    assert all(b["code"] != "GONE-BC" for b in data["barcodes"])
+    assert data["stock_movements"]  # live item's movements remain
+
+
+async def test_preview_reports_source_lines(db):
+    cat = await _resistors(db)
+    data = (FIXTURES / "excel_semicolon.csv").read_bytes()
+    mapping = {"Name": "name", "SKU": "sku", "Resistance": "attr.resistance"}
+    preview = await preview_import(db, data, ImportOptions(category_id=cat.id, mapping=mapping))
+    assert [(r.row, r.line) for r in preview.rows] == [(1, 2), (2, 5)]
+
+
+async def test_oversized_field_is_validation_error(db):
+    big = b"name\n" + b"x" * (csv.field_size_limit() + 10) + b"\n"
+    with pytest.raises(ValidationFailed) as exc:
+        read_csv(big)
+    assert "file" in exc.value.fields
+
+
+async def test_write_failure_message_is_generic(db, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    from pick2light.core import csv_io
+
+    cat = await _resistors(db)
+
+    async def boom(*a, **k):
+        raise IntegrityError("INSERT secret_table", {}, Exception("duplicate key secret_table"))
+
+    monkeypatch.setattr(csv_io, "create_item", boom)
+    preview = await preview_import(
+        db, b"name\nA\n", ImportOptions(category_id=cat.id, mapping={"name": "name"})
+    )
+    assert preview.rows[0].errors == {"row": "Could not save this row"}

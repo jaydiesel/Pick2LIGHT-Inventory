@@ -7,6 +7,7 @@ validation behave exactly as they will on apply.
 
 import csv
 import io
+import logging
 from collections.abc import AsyncIterator, Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -45,6 +46,8 @@ from pick2light.models import (
     Unit,
 )
 from pick2light.models.inventory import UNIT_CONDITIONS
+
+logger = logging.getLogger(__name__)
 
 Entity = Literal["items", "units", "locations", "stock", "log_entries"]
 PATH_SEP = " / "
@@ -293,8 +296,42 @@ async def export_full_json(db: AsyncSession) -> dict[str, Any]:
     for category in categories:
         category["fields"] = [f for f in fields if f["category_id"] == category["id"]]
         category["log_entry_types"] = [t for t in log_types if t["category_id"] == category["id"]]
-    live_items = {i["id"] for i in await _dump(db, Item, derived)}
     items = await _dump(db, Item, derived)
+    live_items = {i["id"] for i in items}
+    locations = await _dump(db, Location)
+    live_locs = {x["id"] for x in locations}
+    for loc in locations:
+        if loc["parent_id"] not in live_locs:
+            loc["parent_id"] = None
+    for item in items:
+        if item["default_location_id"] not in live_locs:
+            item["default_location_id"] = None
+    units = [u for u in await _dump(db, Unit) if u["item_id"] in live_items]
+    live_units = {u["id"] for u in units}
+    for unit in units:
+        if unit["location_id"] not in live_locs:
+            unit["location_id"] = None
+    targets = {"item": live_items, "unit": live_units, "location": live_locs}
+    movements = [
+        m
+        for m in await _dump(db, StockMovement)
+        if (m["item_id"] is None or m["item_id"] in live_items)
+        and (m["unit_id"] is None or m["unit_id"] in live_units)
+    ]
+    live_moves = {m["id"] for m in movements}
+    for move in movements:
+        for col in ("from_location_id", "to_location_id"):
+            if move[col] not in live_locs:
+                move[col] = None
+        if move["reverses_movement_id"] not in live_moves:
+            move["reverses_movement_id"] = None
+    log_entries = [
+        e
+        for e in await _dump(db, LogEntry)
+        if (e["item_id"] in live_items) or (e["unit_id"] in live_units)
+    ]
+    live_logs = {e["id"] for e in log_entries}
+    owners = {**targets, "log_entry": live_logs, "category": {c["id"] for c in categories}}
     return {
         "format": "pick2light-full-export",
         "version": 1,
@@ -306,19 +343,25 @@ async def export_full_json(db: AsyncSession) -> dict[str, Any]:
             for s in await db.scalars(select(CategorySequence))
         ],
         "location_types": await _dump(db, LocationType),
-        "locations": await _dump(db, Location),
+        "locations": locations,
         "items": items,
-        "units": await _dump(db, Unit),
-        "stock": await _dump(db, Stock),
-        "barcodes": await _dump(db, Barcode),
-        "stock_movements": await _dump(db, StockMovement),
-        "log_entries": [
-            e
-            for e in await _dump(db, LogEntry)
-            if e["item_id"] is None or e["item_id"] in live_items
+        "units": units,
+        "stock": [
+            r
+            for r in await _dump(db, Stock)
+            if r["item_id"] in live_items and r["location_id"] in live_locs
         ],
-        "purchase_sources": await _dump(db, PurchaseSource),
-        "attachments": await _dump(db, Attachment),
+        "barcodes": [
+            b for b in await _dump(db, Barcode) if b["target_id"] in targets[b["target_type"]]
+        ],
+        "stock_movements": movements,
+        "log_entries": log_entries,
+        "purchase_sources": [
+            p for p in await _dump(db, PurchaseSource) if p["item_id"] in live_items
+        ],
+        "attachments": [
+            a for a in await _dump(db, Attachment) if a["owner_id"] in owners[a["owner_type"]]
+        ],
     }
 
 
@@ -342,16 +385,34 @@ def _sniff(text: str) -> str:
     return best
 
 
-def read_csv(data: bytes) -> tuple[list[str], list[dict[str, str]]]:
-    """Headers and rows; blank rows dropped, cells stripped. Rows are numbered from 1."""
+def read_csv_lines(data: bytes) -> tuple[list[str], list[tuple[int, dict[str, str]]]]:
+    """Like `read_csv`, but each row carries the line of the file it starts on (header = 1)."""
     text = _decode(data)
-    reader = csv.reader(io.StringIO(text, newline=""), delimiter=_sniff(text))
-    table = [[c.strip() for c in row] for row in reader if any(c.strip() for c in row)]
+    table: list[tuple[int, list[str]]] = []
+    previous_end = 0
+    try:
+        reader = csv.reader(io.StringIO(text, newline=""), delimiter=_sniff(text))
+        for row in reader:
+            start, previous_end = previous_end + 1, reader.line_num
+            cells = [c.strip() for c in row]
+            if any(cells):
+                table.append((start, cells))
+    except csv.Error as exc:
+        raise ValidationFailed({"file": f"Cannot read the CSV: {exc}"}) from None
     if not table:
         return [], []
-    headers, body = table[0], table[1:]
-    rows = [{h: (row[i] if i < len(row) else "") for i, h in enumerate(headers)} for row in body]
+    headers = table[0][1]
+    rows = [
+        (line, {h: (row[i] if i < len(row) else "") for i, h in enumerate(headers)})
+        for line, row in table[1:]
+    ]
     return headers, rows
+
+
+def read_csv(data: bytes) -> tuple[list[str], list[dict[str, str]]]:
+    """Headers and rows; blank rows dropped, cells stripped. Rows are numbered from 1."""
+    headers, rows = read_csv_lines(data)
+    return headers, [row for _, row in rows]
 
 
 # --------------------------------------------------------------------------- import models
@@ -372,7 +433,8 @@ class ImportOptions(BaseModel):
 
 
 class RowResult(BaseModel):
-    row: int
+    row: int  # 1-based among data rows
+    line: int  # line of the file the row starts on (header is line 1)
     action: Action
     errors: dict[str, str] = {}
     values: dict[str, str] = {}
@@ -677,10 +739,10 @@ def _count(rows: list[RowResult]) -> dict[str, int]:
 
 async def _run(db: AsyncSession, data: bytes, opts: ImportOptions) -> ImportPreview:
     """Process every row, each in its own SAVEPOINT; writes stay in the caller's savepoint."""
-    headers, table = read_csv(data)
+    headers, table = read_csv_lines(data)
     ctx = await _check_mapping(db, opts, headers)
     results: list[RowResult] = []
-    for number, raw in enumerate(table, start=1):
+    for number, (line, raw) in enumerate(table, start=1):
         values = {
             target: raw[header]
             for header, target in opts.mapping.items()
@@ -698,10 +760,12 @@ async def _run(db: AsyncSession, data: bytes, opts: ImportOptions) -> ImportPrev
                 errors.update(exc.fields or {"row": exc.message})
             except DBAPIError as exc:
                 await savepoint.rollback()
-                errors["row"] = str(exc.orig)
+                logger.warning("CSV import row %d failed: %s", number, exc.orig)
+                errors["row"] = "Could not save this row"
         results.append(
             RowResult(
                 row=number,
+                line=line,
                 action="skip" if errors else plan.action,
                 errors=errors,
                 values=values,
