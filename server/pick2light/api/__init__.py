@@ -8,6 +8,7 @@ from pick2light.api import (
     health,
     io,
     items,
+    labels,
     location_types,
     locations,
     logs,
@@ -40,6 +41,7 @@ PROTECTED = [
     setup.router,
     scan.router,
     io.router,
+    labels.router,
 ]
 
 api_router = APIRouter()

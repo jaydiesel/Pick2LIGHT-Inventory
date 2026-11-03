@@ -16,6 +16,11 @@ dependencies = [
     "python-multipart>=0.0.9",
     "argon2-cffi>=25.1.0",
     "itsdangerous>=2.2.0",
+    "pillow>=13.0.0",
+    "segno>=1.6.6",
+    "pylibdmtx>=0.1.10",
+    "python-barcode>=0.16.1",
+    "setuptools>=84.2.1",
 ]
 
 [project.scripts]
@@ -43,6 +48,7 @@ asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = ["ignore:distutils Version classes are deprecated:DeprecationWarning"]
 
 [tool.ruff]
 line-length = 110
