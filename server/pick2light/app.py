@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from pick2light import __version__
 from pick2light.api import api_router
+from pick2light.backup.service import MAX_UPLOAD_BYTES
 from pick2light.config import Settings, get_settings
 from pick2light.core import attachments, trash
 from pick2light.db import make_engine
@@ -91,7 +92,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         if app.state.maintenance and request.url.path != "/api/v1/health":
-            return JSONResponse({"error": "maintenance"}, status_code=503)
+            return JSONResponse(
+                {"error": "maintenance", "message": "Restore in progress"}, status_code=503
+            )
+        declared = request.headers.get("content-length", "")
+        if (
+            request.method == "POST"
+            and request.url.path == "/api/v1/backups/upload"
+            and declared.isdigit()
+            and int(declared) > MAX_UPLOAD_BYTES + 1024 * 1024
+        ):
+            # Refused before the body is read (the multipart parser would spool it all).
+            return _error(
+                422, "validation", "Validation failed", {"file": "File is larger than 2 GiB"}
+            )
         return await call_next(request)
 
     app.add_exception_handler(AppError, _app_error)

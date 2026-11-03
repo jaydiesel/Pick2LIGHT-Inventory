@@ -8,6 +8,7 @@ the attachments directory; while it runs the app answers 503 (see the maintenanc
 import asyncio
 import contextlib
 import io
+import itertools
 import json
 import logging
 import os
@@ -16,6 +17,7 @@ import shutil
 import tarfile
 import tempfile
 import uuid
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -33,9 +35,10 @@ from pick2light.errors import InvalidOperation, ValidationFailed
 
 log = logging.getLogger(__name__)
 
-NAME_RE = re.compile(r"^pick2light-\d{8}-\d{4}(-\d+)?\.tar\.gz$")
+NAME_RE = re.compile(r"pick2light-\d{8}-\d{4}(-\d+)?\.tar\.gz\Z")
 LAST_BACKUP_FILE = "last_backup.json"
 MAX_UPLOAD_BYTES = 2 * 1024**3
+SLICE_SECONDS = 300
 
 
 class BackupInfo(BaseModel):
@@ -44,10 +47,44 @@ class BackupInfo(BaseModel):
     created_at: datetime
 
 
+_LIBPQ_PARAMS = {
+    "sslmode",
+    "sslrootcert",
+    "sslcert",
+    "sslkey",
+    "sslcrl",
+    "connect_timeout",
+    "application_name",
+    "options",
+    "target_session_attrs",
+}
+_SSL_FLAGS = {"true": "require", "1": "require", "false": "disable", "0": "disable"}
+
+
 def libpq_url(sqlalchemy_url: str) -> str:
-    """The same URL without the SQLAlchemy driver suffix, for pg_dump / pg_restore."""
+    """The same URL without the SQLAlchemy driver suffix, for pg_dump / psql.
+
+    asyncpg's `ssl=` becomes `sslmode=`; other asyncpg-only query parameters are dropped.
+    """
     url = make_url(sqlalchemy_url).set(drivername="postgresql")
-    return url.render_as_string(hide_password=False)
+    query: dict[str, Any] = {}
+    for key, value in url.query.items():
+        if not isinstance(value, str):
+            continue
+        if key == "ssl":
+            query["sslmode"] = _SSL_FLAGS.get(value.lower(), value)
+        elif key in _LIBPQ_PARAMS:
+            query[key] = value
+    return url.set(query=query).render_as_string(hide_password=False)
+
+
+def libpq_args(sqlalchemy_url: str) -> tuple[str, dict[str, str]]:
+    """(URL without the password, environment carrying PGPASSWORD) for the pg_* tools."""
+    url = make_url(libpq_url(sqlalchemy_url))
+    env = dict(os.environ)
+    if url.password:
+        env["PGPASSWORD"] = url.password
+    return url._replace(password=None).render_as_string(hide_password=False), env
 
 
 def _info(path: Path) -> BackupInfo:
@@ -85,13 +122,28 @@ def _backup_dir(settings: Settings) -> Path:
     return settings.backup_dir
 
 
-def new_backup_name(directory: Path) -> str:
+def _name_candidates() -> Iterator[str]:
     base = datetime.now().strftime("pick2light-%Y%m%d-%H%M")
-    name, n = f"{base}.tar.gz", 1
-    while (directory / name).exists():
-        n += 1
-        name = f"{base}-{n}.tar.gz"
-    return name
+    yield f"{base}.tar.gz"
+    for n in itertools.count(2):
+        yield f"{base}-{n}.tar.gz"
+
+
+def place_file(src: Path, directory: Path, preferred: str | None = None) -> str:
+    """Move `src` into `directory` under a free backup name, never overwriting a file.
+
+    The name is claimed with an exclusive create, then the finished file replaces the claim.
+    """
+    names = _name_candidates()
+    candidate = preferred if preferred and NAME_RE.match(preferred) else next(names)
+    while True:
+        try:
+            os.close(os.open(directory / candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644))
+        except FileExistsError:
+            candidate = next(names)
+            continue
+        os.replace(src, directory / candidate)
+        return candidate
 
 
 def _write_last(directory: Path, data: dict[str, Any]) -> None:
@@ -109,14 +161,28 @@ def read_last_backup(directory: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-async def _run(*argv: str) -> None:
+def _head_tail(text_: str, limit: int = 600) -> str:
+    text_ = text_.strip()
+    if len(text_) <= limit:
+        return text_
+    return f"{text_[: limit // 2]} ... {text_[-limit // 2 :]}"
+
+
+async def _run(*argv: str, env: dict[str, str] | None = None) -> None:
     proc = await asyncio.create_subprocess_exec(
-        *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+        *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE, env=env
     )
-    _, err = await proc.communicate()
+    try:
+        _, err = await proc.communicate()
+    except BaseException:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+        raise
     if proc.returncode != 0:
-        detail = err.decode(errors="replace").strip()[-500:]
-        raise InvalidOperation(f"{Path(argv[0]).name} failed: {detail}")
+        raise InvalidOperation(
+            f"{Path(argv[0]).name} failed: {_head_tail(err.decode(errors='replace'))}"
+        )
 
 
 async def _current_revision(database_url: str) -> str | None:
@@ -168,13 +234,16 @@ async def _create_backup(settings: Settings, directory: Path) -> BackupInfo:
     with tempfile.TemporaryDirectory(prefix=".backup-", dir=directory) as work_name:
         work = Path(work_name)
         dump = work / "db.dump"
+        url, env = libpq_args(settings.database_url)
         await _run(
             "pg_dump",
+            "--no-password",
             "--format=custom",
             "--no-owner",
             "--file",
             str(dump),
-            libpq_url(settings.database_url),
+            url,
+            env=env,
         )
         manifest = {
             "version": __version__,
@@ -185,8 +254,7 @@ async def _create_backup(settings: Settings, directory: Path) -> BackupInfo:
         await asyncio.to_thread(
             _make_archive, partial, dump, Path(settings.data_dir) / "attachments", manifest
         )
-        name = new_backup_name(directory)
-        await asyncio.to_thread(os.replace, partial, directory / name)
+        name = await asyncio.to_thread(place_file, partial, directory)
     return _info(directory / name)
 
 
@@ -243,28 +311,67 @@ async def _terminate_other_backends(database_url: str) -> None:
 
 
 def _extract(path: Path, dest: Path) -> None:
-    validate_archive(path)
     with tarfile.open(path, "r:gz") as tar:
         tar.extractall(dest, filter="data")
 
 
 def _swap_attachments(extracted: Path, target: Path) -> None:
+    """Replace `target` with `extracted/attachments`; undo the first step if the second fails."""
     new = extracted / "attachments"
     new.mkdir(exist_ok=True)
-    old = target.with_name(f"{target.name}.old-{uuid.uuid4().hex}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
+    if target.is_symlink() or target.is_mount():
+        _replace_contents(new, target)
+        return
+    old = target.with_name(f"{target.name}.old-{uuid.uuid4().hex}")
+    had_old = target.exists()
+    if had_old:
         os.replace(target, old)
-    os.replace(new, target)
+    try:
+        os.replace(new, target)
+    except BaseException:
+        if had_old:
+            os.replace(old, target)
+        raise
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def _replace_contents(new: Path, target: Path) -> None:
+    """In-place swap for a mount point or symlink: every rename stays inside `target`."""
+    target.mkdir(parents=True, exist_ok=True)
+    token = uuid.uuid4().hex
+    staged, old = target / f".restore-new-{token}", target / f".restore-old-{token}"
+    staged.mkdir()
+    old.mkdir()
+    try:
+        for child in new.iterdir():  # may cross filesystems (copy); nothing live is touched yet
+            shutil.move(child, staged / child.name)
+        moved: list[Path] = []
+        try:
+            for child in [c for c in target.iterdir() if c not in (staged, old)]:
+                os.replace(child, old / child.name)
+                moved.append(child)
+            for child in list(staged.iterdir()):
+                os.replace(child, target / child.name)
+        except BaseException:
+            for child in target.iterdir():
+                if child not in (staged, old):
+                    shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink()
+            for child in moved:
+                os.replace(old / child.name, child)
+            raise
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
     shutil.rmtree(old, ignore_errors=True)
 
 
 async def restore_backup(settings: Settings, path: Path, app_state: Any) -> None:
     """Replace the database and attachments with the contents of the backup at `path`.
 
-    Callers must have committed and closed any session of their own: the restore needs
-    exclusive locks, so this also drops the app's pooled connections and terminates every
-    other connection to the database before running pg_restore.
+    The database is rebuilt from SQL in one transaction (schema `public` dropped and
+    recreated), so a failure leaves the previous data in place. Callers must have
+    committed and closed any session of their own: this also drops the app's pooled
+    connections and terminates every other connection to the database first.
     """
     manifest = await asyncio.to_thread(validate_archive, path)
     revision = manifest.get("alembic_revision")
@@ -282,22 +389,42 @@ async def restore_backup(settings: Settings, path: Path, app_state: Any) -> None
         dump = work / "db.dump"
         if not dump.is_file():
             raise InvalidOperation("Backup contains no db.dump")
+        url, env = libpq_args(settings.database_url)
+        body, script = work / "body.sql", work / "restore.sql"
+        await _run("pg_restore", "--no-owner", "-f", str(body), str(dump), env=env)
+        await asyncio.to_thread(_build_script, body, script)
         await dispose_engines()
         await _terminate_other_backends(settings.database_url)
         await _run(
-            "pg_restore",
-            "--clean",
-            "--if-exists",
-            "--no-owner",
-            "-d",
-            libpq_url(settings.database_url),
-            str(dump),
+            "psql",
+            "-w",
+            "-q",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "--single-transaction",
+            "-f",
+            str(script),
+            url,
+            env=env,
         )
+        try:
+            await asyncio.to_thread(upgrade_database, settings.database_url)
+        except Exception as exc:
+            raise InvalidOperation(
+                f"Database restored but migrating it to the current version failed: "
+                f"{_head_tail(str(exc))}"
+            ) from exc
         await asyncio.to_thread(_swap_attachments, work, data_dir / "attachments")
-        await asyncio.to_thread(upgrade_database, settings.database_url)
     finally:
         app_state.maintenance = False
         await asyncio.to_thread(shutil.rmtree, work, True)
+
+
+def _build_script(body: Path, script: Path) -> None:
+    with script.open("wb") as out:
+        out.write(b"DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n")
+        with body.open("rb") as src:
+            shutil.copyfileobj(src, out)
 
 
 # --- upload ---------------------------------------------------------------------------------
@@ -318,11 +445,7 @@ async def save_upload(settings: Settings, filename: str | None, chunks: Any) -> 
                 await asyncio.to_thread(out.write, chunk)
         await asyncio.to_thread(validate_archive, part)
         base = (filename or "").replace("\\", "/").rsplit("/", 1)[-1]
-        if NAME_RE.match(base) and not (directory / base).exists():
-            name = base
-        else:
-            name = new_backup_name(directory)
-        await asyncio.to_thread(os.replace, part, directory / name)
+        name = await asyncio.to_thread(place_file, part, directory, base)
     finally:
         part.unlink(missing_ok=True)
     return _info(directory / name)
@@ -345,7 +468,11 @@ async def _schedule_from(db: AsyncSession) -> tuple[str, int]:
 
 
 async def scheduler_loop(settings: Settings, stop: asyncio.Event) -> None:
-    """Run a backup at the configured time every day until `stop` is set."""
+    """Run a backup at the configured time every day until `stop` is set.
+
+    Sleeps in slices and re-reads the schedule after each, so changes apply promptly.
+    """
+    anchor = datetime.now()
     while not stop.is_set():
         try:
             schedule, keep = await _read_schedule(settings)
@@ -353,15 +480,12 @@ async def scheduler_loop(settings: Settings, stop: asyncio.Event) -> None:
             log.exception("could not read backup settings")
             schedule, keep = "03:00", 14
         now = datetime.now()
-        wait = (next_run(schedule, now) - now).total_seconds()
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), wait)
-        if stop.is_set():
-            return
-        try:
-            _, keep = await _read_schedule(settings)
-        except Exception:
-            log.exception("could not read backup settings")
+        remaining = (next_run(schedule, anchor) - now).total_seconds()
+        if remaining > 0:
+            anchor = now
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), min(SLICE_SECONDS, remaining))
+            continue
         try:
             info = await create_backup(settings)
             prune(_backup_dir(settings), keep)
@@ -371,3 +495,4 @@ async def scheduler_loop(settings: Settings, stop: asyncio.Event) -> None:
         # Never fire twice for the same minute.
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), 61)
+        anchor = datetime.now()

@@ -7,7 +7,13 @@ from pick2light import __version__
 async def test_health_ok(client: httpx.AsyncClient) -> None:
     r = await client.get("/api/v1/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "database": "ok", "version": __version__, "backup": None}
+    assert r.json() == {
+        "status": "ok",
+        "database": "ok",
+        "version": __version__,
+        "backup": None,
+        "maintenance": False,
+    }
 
 
 async def test_health_degraded_when_database_fails(

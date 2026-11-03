@@ -21,6 +21,7 @@ from pick2light.backup import service
 from pick2light.config import Settings, get_settings
 from pick2light.core.settings import set_settings
 from pick2light.db import get_db
+from pick2light.errors import InvalidOperation
 from tests.factories import make_category, make_item
 
 
@@ -154,8 +155,10 @@ async def test_maintenance_returns_503_except_health(
     for path in ("/api/v1/items", "/api/docs", "/", "/assets/x.js"):
         r = await client.get(path)
         assert r.status_code == 503, path
-        assert r.json() == {"error": "maintenance"}
+        assert r.json() == {"error": "maintenance", "message": "Restore in progress"}
+    assert (await client.get("/api/v1/health")).json()["maintenance"] is True
     app.state.maintenance = False
+    assert (await client.get("/api/v1/health")).json()["maintenance"] is False
     assert (await client.get("/api/v1/categories")).status_code == 200
 
 
@@ -302,3 +305,225 @@ async def test_restore_rejects_newer_revision(settings: Settings, tmp_path: Path
     with pytest.raises(InvalidOperation):
         await service.restore_backup(settings, archive, state)
     assert state.maintenance is False
+
+
+def test_name_re_rejects_trailing_newline() -> None:
+    assert service.NAME_RE.match("pick2light-20261101-0300.tar.gz")
+    assert not service.NAME_RE.match("pick2light-20261101-0300.tar.gz\n")
+
+
+def test_libpq_args_keep_password_out_of_url() -> None:
+    url, env = service.libpq_args("postgresql+asyncpg://u:sekrit@h:5/db?ssl=require&timeout=5")
+    assert "sekrit" not in url and env["PGPASSWORD"] == "sekrit"
+    assert "sslmode=require" in url and "timeout" not in url and "ssl=" not in url
+
+
+async def test_password_never_in_argv(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from sqlalchemy import make_url
+
+    seen: list[tuple[tuple, dict]] = []
+    real = asyncio.create_subprocess_exec
+
+    async def spy(*argv, **kw):
+        seen.append((argv, kw))
+        return await real(*argv, **kw)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
+    password = make_url(settings.database_url).password
+    await service.create_backup(settings)
+    assert seen
+    for argv, kw in seen:
+        assert not any(f":{password}@" in a for a in argv)
+        assert kw["env"]["PGPASSWORD"] == password
+        assert "--no-password" in argv
+
+
+@pytest_asyncio.fixture
+async def scratch_url(database_url: str) -> AsyncIterator[str]:
+    """A private database, so restores here cannot disturb the shared test database."""
+    from sqlalchemy import make_url
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    name = f"p2l_scratch_{os.getpid()}"
+    url = make_url(database_url)
+    admin = create_async_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    async with admin.connect() as conn:
+        await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    try:
+        yield url.set(database=name).render_as_string(hide_password=False)
+    finally:
+        async with admin.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        await admin.dispose()
+
+
+async def _scalar(url: str, sql: str):
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    eng = create_async_engine(url)
+    try:
+        async with eng.connect() as conn:
+            return (await conn.execute(text(sql))).scalar()
+    finally:
+        await eng.dispose()
+
+
+async def _exec(url: str, sql: str) -> None:
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    eng = create_async_engine(url)
+    try:
+        async with eng.begin() as conn:
+            await conn.execute(text(sql))
+    finally:
+        await eng.dispose()
+
+
+async def test_restore_older_revision_backup(scratch_url: str, tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from alembic import command
+
+    from pick2light.db import alembic_config, upgrade_database
+
+    settings = Settings(database_url=scratch_url, data_dir=tmp_path, secret_key="k")
+    await asyncio.to_thread(command.upgrade, alembic_config(scratch_url), "0009")
+    await _exec(
+        scratch_url,
+        "INSERT INTO category (name, tracking_mode) VALUES ('C', 'bulk')",
+    )
+    info = await service.create_backup(settings)
+    with tarfile.open(settings.backup_dir / info.name) as tar:
+        member = tar.extractfile("manifest.json")
+        assert member is not None and json.load(member)["alembic_revision"] == "0009"
+
+    await asyncio.to_thread(upgrade_database, scratch_url)  # now at head (has label_template)
+    await _exec(scratch_url, "DELETE FROM category")
+    state = SimpleNamespace(maintenance=False)
+    await asyncio.wait_for(
+        service.restore_backup(settings, settings.backup_dir / info.name, state), 60
+    )
+    assert state.maintenance is False
+    assert await _scalar(scratch_url, "SELECT name FROM category") == "C"
+    assert await _scalar(scratch_url, "SELECT version_num FROM alembic_version") == "0010"
+    assert await _scalar(scratch_url, "SELECT count(*) FROM label_template") > 0
+
+
+async def test_failed_restore_leaves_data_and_clears_maintenance(
+    scratch_url: str, tmp_path: Path
+) -> None:
+    from types import SimpleNamespace
+
+    from pick2light.db import upgrade_database
+    from pick2light.errors import InvalidOperation
+
+    settings = Settings(database_url=scratch_url, data_dir=tmp_path, secret_key="k")
+    await asyncio.to_thread(upgrade_database, scratch_url)
+    await _exec(scratch_url, "INSERT INTO category (name, tracking_mode) VALUES ('Keep', 'bulk')")
+    att = tmp_path / "attachments"
+    att.mkdir()
+    (att / "orig").write_text("original")
+    info = await service.create_backup(settings)
+
+    # Corrupt the dump inside an otherwise valid archive.
+    bad = tmp_path / "pick2light-20200101-0000.tar.gz"
+    with tarfile.open(settings.backup_dir / info.name) as src, tarfile.open(bad, "w:gz") as dst:
+        for m in src.getmembers():
+            f = src.extractfile(m) if m.isfile() else None
+            if m.name == "db.dump":
+                payload = b"PGDMP-garbage" * 10
+                m.size = len(payload)
+                f = io.BytesIO(payload)
+            dst.addfile(m, f)
+
+    state = SimpleNamespace(maintenance=False)
+    with pytest.raises(InvalidOperation):
+        await asyncio.wait_for(service.restore_backup(settings, bad, state), 60)
+    assert state.maintenance is False
+    assert await _scalar(scratch_url, "SELECT name FROM category") == "Keep"
+    assert (att / "orig").read_text() == "original"
+
+
+async def test_scheduler_survives_failing_backup(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(*a, **k):
+        raise InvalidOperation("pg_dump failed: nope")
+
+    async def sched(_settings):
+        return "03:00", 1
+
+    monkeypatch.setattr(service, "_create_backup", boom)
+    monkeypatch.setattr(service, "_read_schedule", sched)
+    monkeypatch.setattr(service, "next_run", lambda schedule, now: now)
+    stop = asyncio.Event()
+    task = asyncio.create_task(service.scheduler_loop(settings, stop))
+    marker = settings.backup_dir / "last_backup.json"
+    for _ in range(100):
+        if marker.exists():
+            break
+        await asyncio.sleep(0.05)
+    assert json.loads(marker.read_text())["ok"] is False
+    assert not task.done()
+    stop.set()
+    await asyncio.wait_for(task, 5)
+
+
+async def test_upload_does_not_overwrite_existing(
+    client: httpx.AsyncClient, settings: Settings
+) -> None:
+    a = _tar([("manifest.json", b"{}", "file"), ("db.dump", b"a", "file")])
+    b = _tar([("manifest.json", b"{}", "file"), ("db.dump", b"bb", "file")])
+    name = "pick2light-20200102-0304.tar.gz"
+    await client.post("/api/v1/backups/upload", files={"file": (name, a)})
+    r = await client.post("/api/v1/backups/upload", files={"file": (name, b)})
+    assert r.json()["name"] != name
+    assert (settings.backup_dir / name).read_bytes() == a
+
+
+async def test_upload_rejects_oversize_content_length(client: httpx.AsyncClient) -> None:
+    r = await client.post(
+        "/api/v1/backups/upload",
+        content=b"x",
+        headers={
+            "content-length": str(3 * 1024**3),
+            "content-type": "multipart/form-data; boundary=x",
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_swap_attachments_rolls_back_and_handles_symlink(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "attachments"
+    target.mkdir()
+    (target / "old").write_text("old")
+    new_root = tmp_path / "work"
+    (new_root / "attachments").mkdir(parents=True)
+    (new_root / "attachments" / "new").write_text("new")
+    real = os.replace
+    calls = {"n": 0}
+
+    def flaky(src, dst):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("boom")
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky)
+    with pytest.raises(OSError):
+        service._swap_attachments(new_root, target)
+    monkeypatch.setattr(os, "replace", real)
+    assert (target / "old").read_text() == "old"
+
+    # symlinked target: contents are replaced in place
+    real_dir = tmp_path / "mnt"
+    real_dir.mkdir()
+    (real_dir / "old2").write_text("x")
+    link = tmp_path / "linked"
+    link.symlink_to(real_dir)
+    service._swap_attachments(new_root, link)
+    assert link.is_symlink()
+    assert sorted(p.name for p in real_dir.iterdir()) == ["new"]

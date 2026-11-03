@@ -22,6 +22,7 @@ class Health(BaseModel):
     database: Literal["ok", "error"]
     version: str
     backup: BackupStatus | None = None
+    maintenance: bool = False
 
 
 def _backup_status(request: Request) -> BackupStatus | None:
@@ -36,14 +37,22 @@ def _backup_status(request: Request) -> BackupStatus | None:
 @router.get("/health")
 async def health(request: Request, db: DB) -> Health:
     backup = _backup_status(request)
+    maint = bool(request.app.state.maintenance)
     backup_failed = backup is not None and not backup.ok
     try:
         await db.execute(text("SELECT 1"))
     except Exception:
-        return Health(status="degraded", database="error", version=__version__, backup=backup)
+        return Health(
+            status="degraded",
+            database="error",
+            version=__version__,
+            backup=backup,
+            maintenance=maint,
+        )
     return Health(
         status="degraded" if backup_failed else "ok",
         database="ok",
         version=__version__,
         backup=backup,
+        maintenance=maint,
     )
