@@ -10,12 +10,12 @@ from pick2light.api import (
     locations,
     logs,
     purchase,
+    search,
     stock,
     units,
 )
 
-api_router = APIRouter()
-for module in (
+ROUTERS = [
     health,
     categories,
     location_types,
@@ -27,5 +27,9 @@ for module in (
     logs,
     attachments,
     purchase,
-):
+    search,
+]
+
+api_router = APIRouter()
+for module in ROUTERS:
     api_router.include_router(module.router)

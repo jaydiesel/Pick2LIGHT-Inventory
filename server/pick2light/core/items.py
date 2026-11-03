@@ -1,5 +1,6 @@
 """Items: products / SKUs (spec §3.2)."""
 
+import unicodedata
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
@@ -103,7 +104,7 @@ async def _check_location(
 async def refresh_search_text(db: AsyncSession, item: Item) -> None:
     specs = await cats.effective_fields(db, item.category_id, scope="item")
     parts = [item.name, item.sku, item.description or "", *text_values(specs, item.attrs or {})]
-    item.search_text = " ".join(p for p in parts if p)
+    item.search_text = unicodedata.normalize("NFKC", " ".join(p for p in parts if p))
 
 
 async def on_hand(db: AsyncSession, item: Item) -> float:
