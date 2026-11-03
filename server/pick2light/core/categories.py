@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pick2light.core.fields import FieldSpec
 from pick2light.errors import Conflict, NotFound, ValidationFailed
-from pick2light.models import Category, FieldDefinition, Location, LocationType, LogEntryType
+from pick2light.models import Category, FieldDefinition, Item, Location, LocationType, LogEntryType
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 FieldType = Literal["text", "long_text", "number", "select", "multi_select", "boolean", "date", "url", "file"]
@@ -318,7 +318,12 @@ def _label_for(key: str) -> str:
 
 async def _has_items(db: AsyncSession, category_ids: list[int]) -> bool:
     """Whether any non-deleted item belongs to these categories."""
-    return False
+    count = await db.scalar(
+        select(func.count())
+        .select_from(Item)
+        .where(Item.category_id.in_(category_ids), Item.deleted_at.is_(None))
+    )
+    return bool(count)
 
 
 async def _check_mode_change(db: AsyncSession, subtree: list[int], new_mode: str) -> None:

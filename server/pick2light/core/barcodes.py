@@ -84,9 +84,9 @@ async def barcodes_for(db: AsyncSession, target_type: str, target_id: int) -> li
 
 
 async def _target_exists(db: AsyncSession, target_type: str, target_id: int) -> bool:
-    from pick2light.models import Location
+    from pick2light.models import Item, Location, Unit
 
-    models = {"location": Location}
+    models: dict[str, type] = {"location": Location, "item": Item, "unit": Unit}
     model = models.get(target_type)
     if model is None:
         return False
