@@ -1,0 +1,54 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+from pick2light import __version__
+from pick2light.config import Settings, get_settings
+from pick2light.db import make_engine, make_sessionmaker
+from pick2light.errors import AppError, ValidationFailed
+
+
+def _error_body(exc: AppError) -> dict:
+    body: dict = {"error": exc.code, "message": exc.message}
+    if isinstance(exc, ValidationFailed):
+        body["fields"] = exc.fields
+    return body
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        await app.state.engine.dispose()
+
+    app = FastAPI(
+        title="Pick2LIGHT-Inventory",
+        version=__version__,
+        docs_url="/api/docs",
+        redoc_url=None,
+        openapi_url="/api/openapi.json",
+        lifespan=lifespan,
+    )
+    app.state.settings = settings
+    app.state.engine = make_engine(settings.database_url)
+    app.state.sessionmaker = make_sessionmaker(app.state.engine)
+
+    @app.exception_handler(AppError)
+    async def _app_error(_: Request, exc: AppError) -> JSONResponse:
+        return JSONResponse(_error_body(exc), status_code=exc.status_code)
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+        fields = {".".join(str(p) for p in err["loc"][1:]) or "body": err["msg"] for err in exc.errors()}
+        return JSONResponse(
+            {"error": "validation", "message": "Validation failed", "fields": fields}, status_code=422
+        )
+
+    from pick2light.api import api_router
+
+    app.include_router(api_router, prefix="/api/v1")
+    return app
