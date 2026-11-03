@@ -1,0 +1,17 @@
+.git
+.github
+.superpowers
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+web/dist
+web/test-results
+web/playwright-report
+web/openapi.json
+deploy/docker/.env
+deploy/docker/data
+deploy/docker/backups
+docs
